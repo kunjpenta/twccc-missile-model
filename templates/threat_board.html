@@ -1,0 +1,35 @@
+<!-- threat_board.html -->
+<div class="container">
+  <h2>Threat Board - Scenario: {{ scenario_name }}</h2>
+
+  <!-- DA Selector -->
+  <div class="da-selector">
+    <label for="da-select">Select Defended Asset (DA):</label>
+    <select id="da-select" (change)="onDAChange($event)">
+      <option value="">All DAs</option>
+      <option *ngFor="let da of das" [value]="da.id">{{ da.name }}</option>
+    </select>
+  </div>
+
+  <!-- Threat Table -->
+  <div class="table-container">
+    <table class="threat-table">
+      <thead>
+        <tr>
+          <th>Track ID</th>
+          <th>DA Name</th>
+          <th>Threat Score</th>
+          <th>Computed At</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let threat of threats">
+          <td>{{ threat.track_id }}</td>
+          <td>{{ threat.da_name }}</td>
+          <td>{{ threat.score | number:'1.4-4' }}</td>
+          <td>{{ threat.computed_at | date:'short' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

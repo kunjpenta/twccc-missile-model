@@ -1,0 +1,28 @@
+<!-- src/app/templates/ranking.html -->
+
+{% extends "base.html" %} {% block title %}Threat Ranking{% endblock %}
+{% block content %}
+<h2>Threat Rankings</h2>
+
+<!-- Table to display ranking of threats -->
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Track ID</th>
+      <th>Defended Asset</th>
+      <th>Threat Score</th>
+      <th>Computed At</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for threat in ranked_threats %}
+    <tr>
+      <td>{{ threat.track_id }}</td>
+      <td>{{ threat.da_name }}</td>
+      <td>{{ threat.score }}</td>
+      <td>{{ threat.computed_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

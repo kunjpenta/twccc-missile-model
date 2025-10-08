@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Delete Defended Asset</h2>
+<p>Are you sure you want to delete "{{ da.name }}"?</p>
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger">Delete</button>
+  <a href="{% url 'tewa:da_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

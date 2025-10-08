@@ -1,0 +1,28 @@
+<!-- templates/home.html -->
+{% extends "base.html" %}
+{% block title %}
+Home - Scenario List
+{% endblock %}
+{% block content %}
+<h2>Scenarios</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Start Time</th>
+      <th>End Time</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for scenario in scenarios %}
+    <tr>
+      <td>{{ scenario.name }}</td>
+      <td>{{ scenario.start_time }}</td>
+      <td>{{ scenario.end_time }}</td>
+      <td>{{ scenario.notes }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

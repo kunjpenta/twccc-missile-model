@@ -1,0 +1,332 @@
+[
+    {
+        "model": "tewa.scenario",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-09-30T06:00:00Z",
+            "updated_at": "2025-09-30T06:00:00Z",
+            "name": "Demo-Scenario",
+            "start_time": "2025-09-30T06:00:00Z",
+            "end_time": null,
+            "notes": "Seeded demo scenario for TEWA."
+        }
+    },
+    {
+        "model": "tewa.scenario",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-09-30T06:00:00Z",
+            "updated_at": "2025-09-30T06:00:00Z",
+            "name": "Scenario-2",
+            "start_time": "2025-09-30T06:00:00Z",
+            "end_time": null,
+            "notes": "Seeded scenario 2."
+        }
+    },
+    {
+        "model": "tewa.scenario",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-09-30T06:00:00Z",
+            "updated_at": "2025-09-30T06:00:00Z",
+            "name": "Scenario-3",
+            "start_time": "2025-09-30T06:00:00Z",
+            "end_time": null,
+            "notes": "Seeded scenario 3."
+        }
+    },
+    {
+        "model": "tewa.defendedasset",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-09-30T06:00:00Z",
+            "updated_at": "2025-09-30T06:00:00Z",
+            "name": "DA-Alpha (Jaisalmer)",
+            "lat": 26.889045927834,
+            "lon": 70.86392327099402,
+            "radius_km": 25.0
+        }
+    },
+    {
+        "model": "tewa.defendedasset",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-09-30T06:00:00Z",
+            "updated_at": "2025-09-30T06:00:00Z",
+            "name": "DA-Bravo (Jodhpur)",
+            "lat": 26.2389,
+            "lon": 73.0243,
+            "radius_km": 30.0
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 1,
+        "fields": {
+            "scenario": 1,
+            "track_id": "T1",
+            "lat": 28.9,
+            "lon": 77.4,
+            "alt_m": 3500.0,
+            "speed_mps": 220.0,
+            "heading_deg": 200.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 2,
+        "fields": {
+            "scenario": 1,
+            "track_id": "T2",
+            "lat": 28.7,
+            "lon": 77.1,
+            "alt_m": 3200.0,
+            "speed_mps": 250.0,
+            "heading_deg": 170.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 3,
+        "fields": {
+            "scenario": 1,
+            "track_id": "T3",
+            "lat": 28.5,
+            "lon": 77.6,
+            "alt_m": 4800.0,
+            "speed_mps": 210.0,
+            "heading_deg": 315.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 4,
+        "fields": {
+            "scenario": 2,
+            "track_id": "T1-S2",
+            "lat": 29.0,
+            "lon": 77.5,
+            "alt_m": 3600.0,
+            "speed_mps": 230.0,
+            "heading_deg": 190.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 5,
+        "fields": {
+            "scenario": 2,
+            "track_id": "T2-S2",
+            "lat": 28.8,
+            "lon": 77.2,
+            "alt_m": 3300.0,
+            "speed_mps": 240.0,
+            "heading_deg": 175.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 6,
+        "fields": {
+            "scenario": 2,
+            "track_id": "T3-S2",
+            "lat": 28.6,
+            "lon": 77.7,
+            "alt_m": 4900.0,
+            "speed_mps": 215.0,
+            "heading_deg": 320.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 7,
+        "fields": {
+            "scenario": 3,
+            "track_id": "T1-S3",
+            "lat": 29.1,
+            "lon": 77.6,
+            "alt_m": 3700.0,
+            "speed_mps": 225.0,
+            "heading_deg": 185.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 8,
+        "fields": {
+            "scenario": 3,
+            "track_id": "T2-S3",
+            "lat": 28.9,
+            "lon": 77.3,
+            "alt_m": 3400.0,
+            "speed_mps": 245.0,
+            "heading_deg": 180.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.track",
+        "pk": 9,
+        "fields": {
+            "scenario": 3,
+            "track_id": "T3-S3",
+            "lat": 28.7,
+            "lon": 77.8,
+            "alt_m": 5000.0,
+            "speed_mps": 220.0,
+            "heading_deg": 310.0,
+            "created_at": "2025-09-30T06:05:00Z",
+            "updated_at": "2025-09-30T06:05:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 1,
+        "fields": {
+            "track": 1,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.9,
+            "lon": 77.4,
+            "alt_m": 3500.0,
+            "speed_mps": 220.0,
+            "heading_deg": 200.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 2,
+        "fields": {
+            "track": 2,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.7,
+            "lon": 77.1,
+            "alt_m": 3200.0,
+            "speed_mps": 250.0,
+            "heading_deg": 170.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 3,
+        "fields": {
+            "track": 3,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.5,
+            "lon": 77.6,
+            "alt_m": 4800.0,
+            "speed_mps": 210.0,
+            "heading_deg": 315.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 4,
+        "fields": {
+            "track": 4,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 29.0,
+            "lon": 77.5,
+            "alt_m": 3600.0,
+            "speed_mps": 230.0,
+            "heading_deg": 190.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 5,
+        "fields": {
+            "track": 5,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.8,
+            "lon": 77.2,
+            "alt_m": 3300.0,
+            "speed_mps": 240.0,
+            "heading_deg": 175.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 6,
+        "fields": {
+            "track": 6,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.6,
+            "lon": 77.7,
+            "alt_m": 4900.0,
+            "speed_mps": 215.0,
+            "heading_deg": 320.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 7,
+        "fields": {
+            "track": 7,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 29.1,
+            "lon": 77.6,
+            "alt_m": 3700.0,
+            "speed_mps": 225.0,
+            "heading_deg": 185.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 8,
+        "fields": {
+            "track": 8,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.9,
+            "lon": 77.3,
+            "alt_m": 3400.0,
+            "speed_mps": 245.0,
+            "heading_deg": 180.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    },
+    {
+        "model": "tewa.tracksample",
+        "pk": 9,
+        "fields": {
+            "track": 9,
+            "t": "2025-09-30T06:05:00Z",
+            "lat": 28.7,
+            "lon": 77.8,
+            "alt_m": 5000.0,
+            "speed_mps": 220.0,
+            "heading_deg": 310.0,
+            "created_at": "2025-09-30T06:06:00Z",
+            "updated_at": "2025-09-30T06:06:00Z"
+        }
+    }
+]

@@ -1,0 +1,59 @@
+<!-- templates/scenario_detail.html -->
+{% extends "base.html" %} {% block title %}Scenario Details - {{ scenario.name }}{% endblock %} {% block content %}
+<h2>{{ scenario.name }}</h2>
+
+<p><strong>Start Time:</strong> {{ scenario.start_time }}</p>
+<p><strong>End Time:</strong> {{ scenario.end_time }}</p>
+<p><strong>Notes:</strong> {{ scenario.notes }}</p>
+
+<hr />
+
+<h3>Defended Assets</h3>
+<ul>
+  {% for da in scenario.defendedasset_set.all %}
+  <li>{{ da.name }} - Radius: {{ da.radius_km }} km</li>
+  {% endfor %}
+</ul>
+
+<hr />
+
+<h3>Threat Scores</h3>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Track ID</th>
+      <th>Defended Asset</th>
+      <th>Threat Score</th>
+      <th>Computed At</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for threat in scenario.threatscore_set.all %}
+    <tr>
+      <td>{{ threat.track.track_id }}</td>
+      <td>{{ threat.da.name }}</td>
+      <td>{{ threat.score }}</td>
+      <td>{{ threat.computed_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<hr />
+
+<h3>Tracks</h3>
+<ul>
+  {% for track in scenario.track_set.all %}
+  <li>{{ track.track_id }} - Lat: {{ track.lat }}, Lon: {{ track.lon }}</li>
+  {% endfor %}
+</ul>
+
+<hr />
+
+<!-- Compute Now Button -->
+<form method="post" action="{% url 'tewa:compute_now_scenario' scenario.id %}">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-primary">Compute Now</button>
+</form>
+
+{% endblock %}

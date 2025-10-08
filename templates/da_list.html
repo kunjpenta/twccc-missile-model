@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Defended Assets</h2>
+<a href="{% url 'tewa:da_create' %}" class="btn btn-success">Add DA</a>
+<table class="table table-striped mt-2">
+  <thead>
+    <tr>
+      <th>Name</th><th>Latitude</th><th>Longitude</th><th>Radius (km)</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for da in das %}
+    <tr>
+      <td>{{ da.name }}</td>
+      <td>{{ da.lat }}</td>
+      <td>{{ da.lon }}</td>
+      <td>{{ da.radius_km }}</td>
+      <td>
+        <a href="{% url 'tewa:da_edit' da.id %}" class="btn btn-primary btn-sm">Edit</a>
+        <a href="{% url 'tewa:da_delete' da.id %}" class="btn btn-danger btn-sm">Delete</a>
+        <a href="{% url 'tewa:da_create' %}" class="btn btn-success">Add DA</a>
+
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<a href="{% url 'tewa:da_create' %}" class="btn btn-primary">Add New Defended Asset</a>
+
+{% endblock %}

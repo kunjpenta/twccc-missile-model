@@ -1,0 +1,81 @@
+<!-- templates/base.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}My App{% endblock %}</title>
+    <!-- Add any global styles here -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+    />
+    <style>
+      /* Custom table styles */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+      }
+
+      table th,
+      table td {
+        padding: 10px;
+        text-align: left;
+        border: 1px solid #ddd;
+      }
+
+      table th {
+        background-color: #f4f4f4;
+      }
+
+      /* Navigation styles */
+      nav {
+        background-color: #343a40;
+        padding: 10px 0;
+      }
+
+      nav a {
+        color: white;
+        padding: 10px;
+        text-decoration: none;
+      }
+
+      nav a:hover {
+        background-color: #007bff;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation Bar -->
+    <nav>
+      <div class="container">
+        <a href="/" class="navbar-brand">Home</a>
+        <a href="/about" class="navbar-item">About</a>
+        <a href="/contact" class="navbar-item">Contact</a>
+        <a href="/login" class="navbar-item">Login</a>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-5">
+      {% block content %} <!-- Page-specific content will go here -->
+      {% endblock %}
+    </div>
+
+    <!-- Footer (optional) -->
+    <footer class="mt-5 text-center">
+      <p>&copy; 2025 My App. All rights reserved.</p>
+    </footer>
+
+    <!-- Scripts (if any) -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+  </body>
+</html>
