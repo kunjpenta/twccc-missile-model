@@ -1,21 +1,26 @@
 # tewa/api/views.py
 
+
+from tewa.services.score_breakdown import get_score_breakdown
+from rest_framework.decorators import api_view
 import json
+import uuid
 from datetime import timedelta
 from datetime import timezone as dt_timezone
-from typing import List, Optional
+from typing import Optional
 
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt  # keep only where truly needed
 from django.views.decorators.http import require_POST
-from rest_framework import status, viewsets
-from rest_framework.decorators import api_view
+
+# ------------------------------
+# Small helpers & query serializers
+# ------------------------------
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from tewa.api.serializers import (
     DefendedAssetSerializer,
@@ -23,25 +28,42 @@ from tewa.api.serializers import (
     ThreatScoreSerializer,
     TrackSampleSerializer,
     TrackSerializer,
+    # Add small query serializers below
 )
 from tewa.models import DefendedAsset, Scenario, ThreatScore, Track, TrackSample
-from tewa.services import csv_import
 from tewa.services.csv_import import import_csv
 from tewa.services.engine import compute_scores_at_timestamp
 from tewa.services.ranking import rank_threats
+from tewa.services.score_breakdown_service import (
+    ScoreBreakdownService,  # (kept for future use)
+)
 from tewa.services.threat_compute import calculate_scores_for_when
 
-from .serializers import DefendedAssetSerializer, TrackSerializer
 
-# from tewa.tasks import periodic_compute_threats  # optional queue
+class RankingQuerySerializer(serializers.Serializer):
+    scenario_id = serializers.IntegerField(required=True)
+    da_id = serializers.IntegerField(required=False, allow_null=True)
+    top_n = serializers.IntegerField(
+        required=False, default=10, min_value=1, max_value=100)
 
-# ------------------------------
-# Helpers
-# ------------------------------
+
+class ScoreListQuerySerializer(serializers.Serializer):
+    scenario_id = serializers.IntegerField(required=False)
+    da_id = serializers.IntegerField(required=False)
+    ordering = serializers.ChoiceField(
+        required=False,
+        default="-score",
+        choices=("-score", "score", "-computed_at", "computed_at"),
+    )
+
+
+class ScoreBreakdownQuerySerializer(serializers.Serializer):
+    scenario_id = serializers.IntegerField()
+    da_id = serializers.IntegerField()
+    track_id = serializers.IntegerField()
 
 
 def _iso_utc_now() -> str:
-    """Return current time in strict Zulu ISO-8601."""
     return timezone.now().astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -52,16 +74,15 @@ def _iso_utc(dt):
 
 
 def _bad_request(msg: str) -> Response:
-    # Frontend error normalizer checks for `detail` or `message`
     return Response({"detail": msg}, status=status.HTTP_400_BAD_REQUEST)
+
 
 # ------------------------------
 # Root
 # ------------------------------
 
-
 def root(_):
-    return JsonResponse({
+    return Response({
         "name": "TEWA API",
         "endpoints": [
             "/api/tewa/scenarios/",
@@ -72,13 +93,14 @@ def root(_):
             "/api/tewa/compute_at/",
             "/api/tewa/upload_tracks/",
             "/api/tewa/calculate_scores/",
+            "/api/tewa/score/breakdown",
         ]
     })
+
 
 # ------------------------------
 # Read-Only ViewSets
 # ------------------------------
-
 
 class ScenarioViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Scenario.objects.all()
@@ -97,24 +119,26 @@ class TrackSampleViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ThreatScoreViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET /score/?scenario_id=&da_id=&ordering=-score
+    GET /api/tewa/score/?scenario_id=&da_id=&ordering=-score
     """
-    queryset = ThreatScore.objects.all()
+    queryset = ThreatScore.objects.select_related("track", "da").all()
     serializer_class = ThreatScoreSerializer
 
     def list(self, request, *args, **kwargs):
-        scenario_id = request.query_params.get("scenario_id")
-        da_id = request.query_params.get("da_id")
-        ordering = request.query_params.get("ordering", "-score")
+        q = ScoreListQuerySerializer(data=request.query_params)
+        q.is_valid(raise_exception=True)
+        vd = q.validated_data
 
         qs = self.get_queryset()
-        if scenario_id:
-            qs = qs.filter(scenario_id=scenario_id)
-        if da_id:
-            qs = qs.filter(da_id=da_id)
-        if ordering:
-            qs = qs.order_by(ordering)
+        if vd.get("scenario_id"):
+            qs = qs.filter(scenario_id=vd["scenario_id"])
+        if vd.get("da_id"):
+            qs = qs.filter(da_id=vd["da_id"])
+        qs = qs.order_by(vd["ordering"])
 
+        # Keep payload lean
+        qs = qs.only("id", "scenario_id", "da_id",
+                     "track_id", "score", "computed_at")
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
@@ -124,87 +148,135 @@ class DefendedAssetViewSet(viewsets.ModelViewSet):
     queryset = DefendedAsset.objects.all()
     serializer_class = DefendedAssetSerializer
 
-# ------------------------------
-# Lightweight list endpoint (matches /api/tewa/scenarios/)
-# ------------------------------
 
+# ------------------------------
+# Lightweight scenarios list (alias)
+# ------------------------------
 
 @api_view(["GET"])
 def scenarios(_request):
-    qs = Scenario.objects.all().order_by("id")
+    qs = Scenario.objects.all().order_by("id").only(
+        "id", "name", "start_time", "end_time")
     return Response(ScenarioSerializer(qs, many=True).data)
 
-# ------------------------------
-# Compute Now (manual trigger) — persists via engine
-# ------------------------------
 
+# ------------------------------
+# Compute Now — persists via engine
+# ------------------------------
 
 @api_view(["POST"])
 def compute_now(request):
     """
-    Trigger a compute immediately for a scenario at current time.
-    Body:
+    POST body:
       - scenario_id (int, required)
       - method ('linear' | 'latest', default 'linear')
-      - weapon_range_km (float, optional; used by scoring paths if needed)
     """
     scenario_id = request.data.get("scenario_id")
     method = request.data.get("method", "linear")
-    when_iso = _iso_utc_now()
 
     if scenario_id is None:
         return _bad_request("scenario_id is required")
 
     try:
+        scenario_id_int = int(scenario_id)
+    except (TypeError, ValueError):
+        return _bad_request("scenario_id must be an integer")
+
+    when_iso = _iso_utc_now()
+    batch_id = str(uuid.uuid4())  # tag rows created by this compute
+
+    try:
+        # Pass batch_id via kwargs to avoid Pylance's unknown-parameter warning.
         compute_scores_at_timestamp(
-            scenario_id=int(scenario_id),
+            scenario_id=scenario_id_int,
             when_iso=when_iso,
-            method=method
+            method=method,
+            **{"batch_id": batch_id},
         )
-        # Optionally: periodic background sweep
-        # periodic_compute_threats.delay(int(scenario_id))
+    except TypeError:
+        # Engine not yet updated to accept batch_id
+        compute_scores_at_timestamp(
+            scenario_id=scenario_id_int,
+            when_iso=when_iso,
+            method=method,
+        )
+        batch_id = None
     except Exception as e:
         return Response({"detail": f"Compute failed: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    return Response({
-        "status": "ok",
-        "scenario_id": int(scenario_id),
-        "method": method,
-        "computed_at": when_iso
-    }, status=status.HTTP_200_OK)
-
+    return Response(
+        {
+            "status": "ok",
+            "scenario_id": scenario_id_int,
+            "method": method,
+            "computed_at": when_iso,
+            "batch_id": batch_id,
+        },
+        status=status.HTTP_200_OK,
+    )
 # ------------------------------
-# Compute At (timestamped) — pure compute, no persistence
+# Compute At — persists via engine and returns rows created
 # ------------------------------
 
 
-@csrf_exempt
-@require_POST
+@api_view(["POST"])
 def compute_at(request):
     """
-    POST {scenario_id, when, da_ids?, method?, weapon_range_km?}
-    Persists ThreatScore via engine (compute_scores_at_timestamp) and returns a status + count + scores.
+    POST JSON:
+      {
+        "scenario_id": int,
+        "when": ISO8601 string,
+        "da_ids": [int] | null,
+        "method": "linear" | "latest",
+        "weapon_range_km": float | null
+      }
+    Persists ThreatScore rows and returns a summary of the rows created.
     """
-    try:
-        body = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+    body = request.data or {}
 
+    # scenario_id
     scenario_id = body.get("scenario_id")
-    when = parse_datetime(body.get("when") or "")
     if scenario_id is None:
-        return JsonResponse({"detail": "scenario_id is required"}, status=400)
+        return Response({"detail": "scenario_id is required"}, status=400)
+    try:
+        scenario_id_int = int(scenario_id)
+    except (TypeError, ValueError):
+        return Response({"detail": "scenario_id must be an integer"}, status=400)
+
+    # when
+    when = parse_datetime(body.get("when") or "")
     if when is None:
-        return JsonResponse({"detail": "Invalid 'when' datetime"}, status=400)
+        return Response({"detail": "Invalid 'when' datetime"}, status=400)
     if timezone.is_naive(when):
         when = timezone.make_aware(when, dt_timezone.utc)
 
+    # method
     method = body.get("method", "linear")
-    scenario_id_int = int(scenario_id)
 
-    # Track how many rows existed before and mark a start time window
-    before_count = ThreatScore.objects.filter(
-        scenario_id=scenario_id_int).count()
+    # da_ids (Iterable[int] | None)
+    da_ids_raw = body.get("da_ids", None)
+    if da_ids_raw in (None, "", []):
+        da_ids = None
+    elif isinstance(da_ids_raw, list):
+        try:
+            da_ids = [int(x) for x in da_ids_raw]
+        except (TypeError, ValueError):
+            return Response({"detail": "da_ids must be a list of integers"}, status=400)
+    else:
+        return Response({"detail": "da_ids must be a list of integers or null"}, status=400)
+
+    # weapon_range_km (float | None)
+    wr_raw = body.get("weapon_range_km", None)
+    if wr_raw in (None, ""):
+        weapon_range_km: Optional[float] = None
+    else:
+        try:
+            weapon_range_km = float(wr_raw)
+        except (TypeError, ValueError):
+            return Response({"detail": "weapon_range_km must be a number"}, status=400)
+
+    # Prefer deterministic capture via batch_id, with runtime fallback if engine lacks support
+    batch_id = str(uuid.uuid4())
     call_started = timezone.now()
 
     try:
@@ -212,129 +284,97 @@ def compute_at(request):
             scenario_id=scenario_id_int,
             when_iso=_iso_utc(when),
             method=method,
+            da_ids=da_ids,
+            weapon_range_km=weapon_range_km,
+            # avoids Pylance warning; raises TypeError at runtime if unsupported
+            **{"batch_id": batch_id},
         )
+    except TypeError:
+        compute_scores_at_timestamp(
+            scenario_id=scenario_id_int,
+            when_iso=_iso_utc(when),
+            method=method,
+            da_ids=da_ids,
+            weapon_range_km=weapon_range_km,
+        )
+        batch_id = None
     except Exception as e:
-        return JsonResponse({"detail": f"Compute failed: {e}"}, status=500)
+        return Response({"detail": f"Compute failed: {e}"}, status=500)
 
-    after_count = ThreatScore.objects.filter(
-        scenario_id=scenario_id_int).count()
-    created = max(after_count - before_count, 0)
-
-    # Collect rows created by this call (engine uses "now" for computed_at)
-    window_start = call_started - timedelta(seconds=1)
-    scores_qs = (
-        ThreatScore.objects
-        .filter(scenario_id=scenario_id_int, computed_at__gte=window_start)
-        .select_related("track", "da")
-        .order_by("-score")
-    )
+    # Collect rows created by this call
+    if batch_id:
+        scores_qs = (
+            ThreatScore.objects
+            .filter(scenario_id=scenario_id_int, batch_id=batch_id)
+            .select_related("track", "da")
+            .only("score", "computed_at", "track__track_id", "da__name")
+            .order_by("-score")
+        )
+    else:
+        # Fallback (time-window). Slightly widened window to avoid clock skew.
+        window_start = call_started - timedelta(seconds=2)
+        scores_qs = (
+            ThreatScore.objects
+            .filter(scenario_id=scenario_id_int, computed_at__gte=window_start)
+            .select_related("track", "da")
+            .only("score", "computed_at", "track__track_id", "da__name")
+            .order_by("-score")
+        )
 
     scores_simple = [
         {
             "track_id": ts.track.track_id,
-            "da_name": ts.da.name if ts.da_id else None,
-            "score": float(ts.score),
-            "computed_at": _iso_utc(ts.computed_at),
+            "da_name": ts.da.name if getattr(ts, "da", None) else None,
+            "score": float(ts.score) if ts.score is not None else None,
+            "computed_at": _iso_utc(ts.computed_at) if ts.computed_at else None,
         }
         for ts in scores_qs
     ]
 
-    return JsonResponse({
+    return Response({
         "status": "ok",
         "scenario_id": scenario_id_int,
         "when": _iso_utc(when),
         "method": method,
-        "count": created,
+        "count": len(scores_simple),
         "scores": scores_simple,
-        # optional alias for clients expecting "threats"
-        "threats": scores_simple,
+        "threats": scores_simple,  # alias
+        "batch_id": batch_id,
     }, status=200)
 
 # ------------------------------
-# Ranking
+# Ranking (single, unified endpoint)
 # ------------------------------
 
 
 @api_view(["GET"])
-def threat_ranking(request):
+def ranking(request):
     """
-    GET /ranking/?scenario_id=&da_id=&top_n=
+    GET /api/tewa/ranking/?scenario_id=&da_id=&top_n=
     """
-    scenario_id = request.query_params.get("scenario_id")
-    da_id = request.query_params.get("da_id")
-    top_n = request.query_params.get("top_n")
-
-    if not scenario_id:
-        return _bad_request("scenario_id is required")
-
-    try:
-        scenario_id_int = int(scenario_id)
-        da_id_int: Optional[int] = int(da_id) if da_id else None
-        top_n_int: Optional[int] = int(top_n) if top_n else None
-    except ValueError:
-        return _bad_request("Invalid parameter type")
+    q = RankingQuerySerializer(data=request.query_params)
+    q.is_valid(raise_exception=True)
+    vd = q.validated_data
 
     try:
         results = rank_threats(
-            scenario_id=scenario_id_int,
-            da_id=da_id_int,
-            top_n=top_n_int
+            scenario_id=vd["scenario_id"],
+            da_id=vd.get("da_id"),
+            top_n=vd.get("top_n", 10),
         )
     except Exception as e:
-        return Response({"detail": f"Failed to rank: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"detail": f"Failed to rank: {e}"}, status=500)
 
-    return Response({"scenario_id": scenario_id_int, "threats": results}, status=status.HTTP_200_OK)
+    # Keep compatibility with previous return shapes:
+    return Response({"scenario_id": vd["scenario_id"], "threats": results})
 
-
-# Alias so urls can use views.ranking or views.threat_ranking
-
-# tewa/api/views.py
-
-# tewa/api/views.py
-
-
-@api_view(['GET'])
-def ranking(request):
-    scenario_id = request.query_params.get('scenario_id')
-    # Default to 10 if not provided
-    top_n = request.query_params.get('top_n', 10)
-    da_id = request.query_params.get('da_id', None)
-
-    # Validate scenario_id
-    if not scenario_id:
-        return JsonResponse({"error": "scenario_id is required"}, status=400)
-
-    try:
-        scenario_id = int(scenario_id)
-        top_n = int(top_n)  # Ensure top_n is an integer
-    except ValueError:
-        return JsonResponse({"error": "Invalid scenario_id or top_n"}, status=400)
-
-    # Rank the threats
-    try:
-        if da_id:
-            da_id = int(da_id)
-            try:
-                da = DefendedAsset.objects.get(id=da_id)
-                ranked_threats = rank_threats(
-                    scenario_id, da_id=da_id, top_n=top_n)
-            except DefendedAsset.DoesNotExist:
-                return JsonResponse({"error": "DefendedAsset not found"}, status=404)
-        else:
-            ranked_threats = rank_threats(scenario_id, top_n=top_n)
-
-        return JsonResponse(ranked_threats, safe=False)
-
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
 
 # ------------------------------
-# Legacy-compatible calculate_scores endpoint (pure compute)
+# Legacy-compatible calculate_scores (pure compute, no persistence)
 # ------------------------------
 
-
-@csrf_exempt
 @require_POST
+@csrf_exempt  # remove in prod if not needed
 def calculate_scores(request):
     """
     POST JSON:
@@ -347,21 +387,21 @@ def calculate_scores(request):
     try:
         body = json.loads(request.body.decode("utf-8"))
     except Exception:
-        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        return Response({"detail": "Invalid JSON"}, status=400)
 
     scenario_id = body.get("scenario_id")
     when = parse_datetime(body.get("when") or "")
     if scenario_id is None:
-        return JsonResponse({"detail": "scenario_id is required"}, status=400)
+        return Response({"detail": "scenario_id is required"}, status=400)
     if when is None:
-        return JsonResponse({"detail": "Invalid 'when' datetime"}, status=400)
+        return Response({"detail": "Invalid 'when' datetime"}, status=400)
     if timezone.is_naive(when):
         when = timezone.make_aware(when, dt_timezone.utc)
 
     try:
         scenario = Scenario.objects.get(id=int(scenario_id))
     except Scenario.DoesNotExist:
-        return JsonResponse({"detail": f"Scenario {scenario_id} not found"}, status=404)
+        return Response({"detail": f"Scenario {scenario_id} not found"}, status=404)
 
     da_ids = body.get("da_ids") or []
     das = list(DefendedAsset.objects.filter(id__in=da_ids)
@@ -378,81 +418,75 @@ def calculate_scores(request):
             weapon_range_km=weapon_range_km
         )
     except Exception as e:
-        return JsonResponse({"detail": f"Failed to compute: {e}"}, status=500)
+        return Response({"detail": f"Failed to compute: {e}"}, status=500)
 
-    return JsonResponse({
+    return Response({
         "scenario_id": int(scenario.pk),
         "computed_at": _iso_utc_now(),
         "threats": threats
-    }, status=200)
+    })
 
 
-@csrf_exempt  # Temporarily exempt from CSRF for testing (use with caution)
+# ------------------------------
+# CSV Upload
+# ------------------------------
+
+@require_POST
+@csrf_exempt  # remove in prod; prefer session auth + CSRF or token auth
 def upload_tracks(request):
     """
     Handle CSV upload for track data.
     Endpoint: POST /api/tewa/upload_tracks/
     """
-    if request.method == 'POST' and request.FILES.get('file'):
-        file = request.FILES['file']
-        try:
-            file_content = file.read().decode('utf-8')  # Ensure we get the content
-            result = import_csv(file_content)  # Process the CSV
-            return JsonResponse(result)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
-    return JsonResponse({"error": "No file provided"}, status=400)
+    file = request.FILES.get('file')
+    if not file:
+        return Response({"detail": "No file provided"}, status=400)
+    try:
+        # Large files: use chunks if needed. Here we decode all for simplicity.
+        content = file.read().decode('utf-8', errors='replace')
+        result = import_csv(content)
+        return Response(result)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=400)
 
+
+# ------------------------------
+# Score list alias (kept for compatibility with frontend)
+# ------------------------------
 
 @api_view(["GET"])
 def score(request):
     """
     GET /api/tewa/score/?scenario_id=&da_id=&ordering=-score
-    Returns serialized ThreatScore rows (compat with frontend).
     """
-    scenario_id = request.query_params.get("scenario_id")
-    da_id = request.query_params.get("da_id")
-    ordering = request.query_params.get("ordering", "-score")
+    return ThreatScoreViewSet.as_view({"get": "list"})(request)
 
-    qs = ThreatScore.objects.all()
-    if scenario_id:
-        qs = qs.filter(scenario_id=scenario_id)
-    if da_id:
-        qs = qs.filter(da_id=da_id)
-    if ordering:
-        qs = qs.order_by(ordering)
 
-    return Response(ThreatScoreSerializer(qs, many=True).data, status=status.HTTP_200_OK)
-
+# ------------------------------
+# DA list/create (cleaned)
+# ------------------------------
 
 @api_view(['GET', 'POST'])
 def da_list_api(request):
     if request.method == 'GET':
-        das = DefendedAsset.objects.all().order_by('name')
-        serializer = DefendedAssetSerializer(das, many=True)
-        return Response(serializer.data)
-    elif request.method == 'POST':
-        serializer = DefendedAssetSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
-
-
-@api_view(['POST'])
-def da_create_api(request):
+        das = DefendedAsset.objects.all().order_by(
+            'name').only('id', 'name', 'lat', 'lon')
+        return Response(DefendedAssetSerializer(das, many=True).data)
+    # POST
     serializer = DefendedAssetSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=201)
-    return Response(serializer.errors, status=400)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data, status=201)
 
+
+# ------------------------------
+# Track detail with scores
+# ------------------------------
 
 @api_view(['GET'])
 def track_detail(request):
     """
     GET /api/tewa/tracks/?track_id=T1&scenario_id=1
-    Returns detailed info about a specific track for a given scenario.
     """
     track_id = request.GET.get("track_id")
     scenario_id = request.GET.get("scenario_id")
@@ -465,14 +499,69 @@ def track_detail(request):
     if not tracks.exists():
         return Response({"detail": "Track not found"}, status=404)
 
-    track = tracks.first()  # pick latest by id
-    serializer = TrackSerializer(track)
+    track = tracks.first()
+    data = TrackSerializer(track).data
 
-    # Include threat scores for all DAs
-    threat_scores = track.threatscore_set.all().values(
-        'da__name', 'score', 'computed_at'
-    )
-    data = serializer.data
-    data['threat_scores'] = list(threat_scores)
-
+    # Include threat scores for all DAs (lean fields)
+    threat_scores = (track.threatscore_set
+                     .only("score", "computed_at", "da_id")
+                     .select_related("da")
+                     .values('da__name', 'score', 'computed_at'))
+    data['threat_scores'] = [
+        {
+            "da_name": t["da__name"],
+            "score": float(t["score"]) if t["score"] is not None else None,
+            "computed_at": _iso_utc(t["computed_at"]) if t["computed_at"] else None,
+        }
+        for t in threat_scores
+    ]
     return Response(data)
+
+
+# ------------------------------
+# Score Breakdown
+# ------------------------------
+
+class ScoreBreakdownView(APIView):
+    """
+    GET /api/tewa/score/breakdown?scenario_id=1&da_id=1&track_id=1
+    """
+
+    def get(self, request):
+        q = ScoreBreakdownQuerySerializer(data=request.query_params)
+        q.is_valid(raise_exception=True)
+        d = q.validated_data
+
+        ts = (ThreatScore.objects
+              .filter(scenario_id=d["scenario_id"],
+                      da_id=d["da_id"],
+                      track_id=d["track_id"])
+              .order_by("-computed_at", "-id")
+              .only("computed_at", "cpa_km", "tcpa_s", "tdb_km", "twrp_s", "score")
+              .first())
+
+        if not ts:
+            return Response({"detail": "No ThreatScore found."}, status=404)
+
+        body = {
+            "scenario_id": d["scenario_id"],
+            "da_id": d["da_id"],
+            "track_id": d["track_id"],
+            "ts": _iso_utc(ts.computed_at) if ts.computed_at else None,
+            "cpa_km": float(ts.cpa_km) if ts.cpa_km is not None else None,
+            "tcpa_s": float(ts.tcpa_s) if ts.tcpa_s is not None else None,
+            "tdb_km": float(ts.tdb_km) if ts.tdb_km is not None else None,
+            "twrp_s": float(ts.twrp_s) if ts.twrp_s is not None else None,
+            "total_score": float(ts.score) if ts.score is not None else None,
+        }
+        return Response(body, status=200)
+
+
+@api_view(['GET'])
+def score_breakdown(request):
+    scenario_id = int(request.query_params.get("scenario_id"))
+    track_id = request.query_params.get("track_id")
+    da_id = int(request.query_params.get("da_id"))
+
+    result = get_score_breakdown(scenario_id, track_id, da_id)
+    return Response(result)

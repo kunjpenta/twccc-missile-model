@@ -1,29 +1,17 @@
 # core/urls.py
+
 from django.contrib import admin
-from django.http import JsonResponse
-from django.urls import include, path
+from django.urls import path
 
 from .views import api_root, db_ping, health, index
 
-
-def core_root(_):
-    # Shown at GET /api/  (together with api_index above if you like, or keep this to subpaths)
-    return JsonResponse({
-        "name": "Core API",
-        "endpoints": ["/api/health", "/api/db-ping"]
-    })
-
+app_name = "core"
 
 urlpatterns = [
-
-    path('health', health, name='health'),
-    path('', index, name='index'),
-    path('api/', api_root, name='api_root'),
-    path('api/health', health, name='api_health'),
-    path('db-ping', db_ping, name='db_ping'),
-    path('api/tewa/', include('tewa.api.urls')),
-    path('admin/', admin.site.urls),
-
-
-
+    path("", index, name="index"),                 # GET /
+    path("health/", health, name="health"),        # GET /health/
+    path("db-ping/", db_ping, name="db_ping"),     # GET /db-ping/
+    path("api/", api_root, name="api_root"),       # GET /api/
+    path("api/health/", health, name="api_health"),  # GET /api/health/
+    path("admin/", admin.site.urls),               # /admin/
 ]

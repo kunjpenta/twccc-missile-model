@@ -1,28 +1,14 @@
 # tewa/services/sampling.py
-
-
 from __future__ import annotations
-from tewa.models import TrackSample
 
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
-from django.db.models import F, Q
 from django.utils import timezone
 
+from core.dtos import TrackState
 from core.utils.geodesy import LatLon, enu_from_latlon, latlon_from_enu
 from core.utils.units import wrap_deg_signed
 from tewa.models import Track, TrackSample
-
-
-@dataclass(frozen=True)
-class TrackState:
-    lat: float
-    lon: float
-    alt_m: float
-    speed_mps: float
-    heading_deg: float
-    source: str  # "interp" | "sample" | "track"
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -81,15 +67,16 @@ def sample_track_state_at(
         alt = _lerp(s1.alt_m, s2.alt_m, frac)
         spd = _lerp(s1.speed_mps, s2.speed_mps, frac)
         hdg = _lerp_heading(s1.heading_deg, s2.heading_deg, frac)
-        return TrackState(p.lat, p.lon, alt, spd, hdg, source="interp")
+        return TrackState(p.lat, p.lon, alt, spd, hdg)
 
     # latest: prefer s1 (<= when)
     if s1:
-        return TrackState(s1.lat, s1.lon, s1.alt_m, s1.speed_mps, s1.heading_deg, source="sample")
-
+        # return TrackState(s1.lat, s1.lon, s1.alt_m, s1.speed_mps, s1.heading_deg, source="sample")
+        return TrackState(s1.lat, s1.lon, s1.alt_m, s1.speed_mps, s1.heading_deg)
     # fallback to live snapshot on Track model
     if hasattr(track, "lat"):
-        return TrackState(track.lat, track.lon, track.alt_m, track.speed_mps, track.heading_deg, source="track")
+       # return TrackState(track.lat, track.lon, track.alt_m, track.speed_mps, track.heading_deg, source="track")
+        return TrackState(track.lat, track.lon, track.alt_m, track.speed_mps, track.heading_deg)
 
     return None
 

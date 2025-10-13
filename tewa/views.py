@@ -1,6 +1,5 @@
 # tewa/views.py
 
-from tewa.services.ranking import rank_threats
 import csv
 import io
 import logging
@@ -8,7 +7,7 @@ from datetime import datetime
 from io import StringIO
 
 from django.core.exceptions import ValidationError
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -34,6 +33,8 @@ from tewa.services.kinematics import (
     time_to_da_boundary_s,
     time_to_weapon_release_s,
 )
+from tewa.services.ranking import rank_threats
+from tewa.services.score_breakdown_service import ScoreBreakdownService
 from tewa.services.scoring import combine_score
 
 # Import forms
@@ -463,3 +464,42 @@ def threat_board(request):
         return Response(board)
     except Exception as e:
         return Response({"detail": str(e)}, status=400)
+
+# tewa/views.py
+
+
+def track_browser_page(request):
+    """
+    Serves the track browser HTML page for API testing.
+    """
+    return render(request, 'track_browser.html')
+
+
+def score_breakdown_page(request, scenario_id: int, da_id: int, track_id: int):
+    ts = (ThreatScore.objects
+          .filter(scenario_id=scenario_id,
+                  da_id=da_id,
+                  track_id=track_id)
+          .order_by("-computed_at", "-id")
+          .first())
+    if not ts:
+        raise Http404("No ThreatScore found. Run compute and try again.")
+
+    dto = {
+        "scenario_id": scenario_id,
+        "da_id": da_id,
+        "track_id": track_id,
+        "ts": ts.computed_at.isoformat() if ts.computed_at else "",
+        "cpa": float(ts.cpa),
+        "tcpa": float(ts.tcpa),
+        "tdb": float(ts.tdb),
+        "twrp": float(ts.twrp),
+        "cpa_n": float(ts.cpa_n) if ts.cpa_n is not None else None,
+        "tcpa_n": float(ts.tcpa_n) if ts.tcpa_n is not None else None,
+        "tdb_n": float(ts.tdb_n) if ts.tdb_n is not None else None,
+        "twrp_n": float(ts.twrp_n) if ts.twrp_n is not None else None,
+        "total_score": float(ts.total_score) if ts.total_score is not None else None,
+        "details": ts.details if hasattr(ts, "details") else None,
+    }
+    # NOTE: your file is tewa/templates/score_breakdown.html (no folder prefix)
+    return render(request, "score_breakdown.html", {"dto": dto})

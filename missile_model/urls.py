@@ -1,22 +1,25 @@
 # missile_model/urls.py
-
 from django.contrib import admin
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
-from django.views.generic import RedirectView
+
+
+def home(_request):
+    return HttpResponse("Home")
+
+
+def health(_request):
+    return JsonResponse({"status": "ok"})
+
 
 urlpatterns = [
-    # Home & TEWA app
-    path('', include('tewa.urls', namespace='tewa')),
+    path("admin/", admin.site.urls),
+    # Mount API under a single prefix
+    path("api/tewa/", include("tewa.api.urls")),
 
-    # Admin
-    path('admin/', admin.site.urls),
+    # Optional site views (non-API). Keep only if tewa/urls.py exists.
+    # path("tewa/", include("tewa.urls")),
 
-    # API root & health
-    path('api/', lambda r: JsonResponse({"ok": True}), name='api_root'),
-
-    # Redirects
-    path('api', RedirectView.as_view(url='/api/', permanent=False)),
-    path('api/tewa/', include('tewa.urls', namespace='tewa')),
-
+    path("", home, name="home"),
+    path("health/", health, name="health"),
 ]

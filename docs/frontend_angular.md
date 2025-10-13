@@ -414,3 +414,206 @@ Track visualization → use lat, lon from Tracks or TrackSamples.
 Ranking Table → fetch /api/tewa/ranking/ and sort by score.
 
 Frontend can poll /api/tewa/ranking/ periodically if Celery Beat is running.
+
+########################################################### 13/10/2025##########################################
+awesome — here’s a clean, detailed wrap-up of everything we changed and completed in this thread, end-to-end. it’s written so you can drop it into your project docs or share it with the team (no code blocks).
+
+what we built & stabilized
+
+1. backend threat-scoring model (principles + behavior)
+
+Core signals: CPA (closest distance), TCPA (time to CPA), TDB (current distance to DA center), TWRP (time to weapon release).
+
+Normalization: each signal is mapped to a 0–1 urgency score where smaller/faster ⇒ more threatening. Scales (e.g., cpa_scale_km) define what “urgent” looks like.
+
+Weighted fusion: a final threat score is a weighted sum of the normalized components. Weights encode doctrine (e.g., proximity vs timing).
+
+Edge-case policy:
+
+Negative TCPA (CPA is in the past) contributes 0 urgency.
+
+No weapon opportunity (TWRP None/∞/invalid) contributes 0 urgency.
+
+Bad inputs (None/NaN/±∞) contribute 0, not garbage.
+
+Final clamping: optional clamp to [0,1]. We keep unclamped mode available for calibration tests (e.g., “doubling weights doubles the score”).
+
+2. robust parameter handling
+
+Introduced a single parameter coercion step that accepts either:
+
+a dict (tests, scripts), or
+
+a Django model instance (runtime).
+
+Coercion fills in sensible defaults for missing values and guarantees a consistent internal shape, reducing copy-paste and drift.
+
+3. clean separation: compute vs persist
+
+Pure compute: functions that only calculate numbers (no DB). Easy to reason about and unit-test.
+
+Persistence path: orchestrates model lookups, computes the score, and stores ThreatScore rows. Keeps side effects out of the math.
+
+fixes & refactors we did during the chat 4) pytest / environment issues resolved
+
+Diagnosed pytest_django plugin import errors due to PATH confusion between system pytest and venv pytest.
+
+Standardized invocation using python -m pytest -p pytest_django --ds=missile_model.settings to force venv and stable settings.
+
+Verified plugin installation inside the virtualenv, and cleared shell command cache.
+
+5. unit tests: repaired, extended, and made self-contained
+
+Fixed tests that were written as if they were instance methods (e.g., self as a fixture).
+
+Converted tests to use the positional-friendly scoring function.
+
+Added/kept behavioral tests that assert model properties, not just numbers:
+
+negative TCPA reduces threat vs. positive TCPA;
+
+weights emphasis changes the ordering;
+
+extreme distances ⇒ low score;
+
+no clamp allows score > 1 when weights sum > 1;
+
+missing params fall back to defaults.
+
+Ensured tests require no DB when possible (e.g., SimpleTestCase + dict params).
+
+6. scoring service hardened
+
+Finalized a single, consistent scoring function that:
+
+normalizes with inversion and scales;
+
+applies weights;
+
+handles None/negative time appropriately;
+
+respects clamping policy.
+
+Kept a legacy/simple combiner (for compatibility) but the canonical path is the new, parameterized scorer.
+
+7. threat_compute service refactor
+
+Rewrote compute_threat_score to be pure compute, returning:
+
+cpa_km, tcpa_s (never negative on output), tdb_km, twrp_s (∞ if no opportunity), and score.
+
+Updated compute_score_for_track to:
+
+compute CPA/TCPA/TWRP correctly,
+
+derive TDB from current geometry,
+
+coerce parameters once,
+
+persist a ThreatScore row with all components and the final score.
+
+Fixed a missing/invalid type import (ParamsLike) by either defining it or removing the dependency; replaced with the coercion approach to avoid fragile type paths.
+
+In batch compute paths:
+
+ensured ModelParams.get_or_create has non-zero defaults so scores aren’t 0.0 when a scenario is first computed.
+
+8. API & engine glue made reliable
+
+Prevented import errors in API routes by removing brittle type-only imports and reusing the shared coercion.
+
+Confirmed the compute_at endpoint behavior: time sampling/interpolation performed before scoring, results persisted and returned.
+
+Verified the score breakdown API’s semantics: it returns the latest ThreatScore for a track/DA combo.
+
+test outcomes & coverage 9) test pass results
+
+We iterated from scattered failures and import errors to stable green:
+
+Final: 34 tests passed (project suite).
+
+Point-checks along the way validated both compute logic and API/management flows.
+
+10. coverage workflow stabilized
+
+Documented a repeatable coverage routine (coverage erase → coverage run -m pytest -q → coverage report → coverage html).
+
+Resolved a confusing run (long parse time) by using the erase-run-report pattern.
+
+Achieved strong coverage where it matters (math/compute). Lower coverage in view/admin areas is expected at this stage.
+
+operational principles embedded 11) interpretability & doctrine mapping
+
+Every knob (scale, weight, clamp) has a plain-language meaning:
+
+scales tie to tactical thresholds;
+
+weights reflect doctrine;
+
+clamp toggles UI vs calibration modes.
+
+12. fault-tolerance
+
+Invalid or unavailable data points fail soft, not hard.
+
+Scores remain meaningful and bounded (when clamped), which prevents UI jitter and bad alerts.
+
+13. extensibility
+
+The combination framework supports new components (e.g., sensor credibility, intent) by normalizing and weighting into the same structure.
+
+API is future-proofed: inputs/outputs are componentized and returned, enabling explainability (“why this score?”).
+
+what the frontend team needs to know (integration summary)
+
+you said you created a frontend integration doc for Angular; here are the core points we ensured the backend supports and that your doc can emphasize:
+
+Endpoints:
+
+compute at a timestamp (interpolates state, computes, persists);
+
+score breakdown (returns latest, componentized scores).
+
+Request inputs:
+
+scenario id, DA id(s), timestamp (ISO 8601), interpolation method (e.g., linear), optional weapon range.
+
+Response semantics:
+
+returns components (CPA/TCPA/TDB/TWRP) and the final score so the UI can show both rank and explanation.
+
+tcpa_s is non-negative in responses; twrp_s can be ∞ (no opportunity).
+
+State & idempotency:
+
+compute endpoints persist results (ThreatScore rows) and can be queried later; repeated calls for the same inputs are safe.
+
+Tuning knobs (backed by params):
+
+scales and weights are scenario-scoped; future admin/UI screens can expose doctrine presets without code changes.
+
+final status (what’s done)
+
+✅ scoring logic finalized with robust normalization, weighting, clamping, and edge-case policy.
+
+✅ parameter coercion unified dict/model inputs with defaults.
+
+✅ compute vs persist separated cleanly; both paths stabilized.
+
+✅ tests repaired/extended to cover key behavioral properties.
+
+✅ all project tests passing (34/34).
+
+✅ coverage workflow reliable; high confidence in the math layer.
+
+✅ API/engine imports and routing stabilized.
+
+✅ frontend integration concepts documented (inputs/outputs, semantics, explainability).
+
+suggested next steps
+
+expose parameter profiles (weights/scales) in admin/UI for scenario-specific doctrine.
+
+add a minimal “explain this score” API that echoes normalized components + weight impact for the selected track/DA.
+
+consider nonlinear curves (logistic/exponential) if SMEs want sharper urgency near the DA without retuning weights.

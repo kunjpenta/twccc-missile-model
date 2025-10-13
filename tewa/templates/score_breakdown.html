@@ -1,0 +1,82 @@
+{% extends "base.html" %} {% block title %}Score Breakdown{% endblock %} {%
+block content %}
+<h2>Score Breakdown</h2>
+<div class="card">
+  <div class="row">
+    <div><strong>Scenario</strong>: {{ dto.scenario_id }}</div>
+    <div><strong>DA</strong>: {{ dto.da_id }}</div>
+    <div><strong>Track</strong>: {{ dto.track_id }}</div>
+    <div><strong>Computed at</strong>: {{ dto.ts }}</div>
+  </div>
+  <hr />
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Raw</th>
+        <th>Normalized</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>CPA</td>
+        <td>{{ dto.cpa }}</td>
+        <td>{{ dto.cpa_n|default:"—" }}</td>
+      </tr>
+      <tr>
+        <td>TCPA</td>
+        <td>{{ dto.tcpa }}</td>
+        <td>{{ dto.tcpa_n|default:"—" }}</td>
+      </tr>
+      <tr>
+        <td>TDB</td>
+        <td>{{ dto.tdb }}</td>
+        <td>{{ dto.tdb_n|default:"—" }}</td>
+      </tr>
+      <tr>
+        <td>TWRP</td>
+        <td>{{ dto.twrp }}</td>
+        <td>{{ dto.twrp_n|default:"—" }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>Total</th>
+        <th colspan="2">{{ dto.total_score|default:"—" }}</th>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if dto.details %}
+  <h4>Details</h4>
+  <pre style="white-space: pre-wrap">
+{{ dto.details|json_script:"score_details_json" }}</pre
+  >
+  {% endif %}
+</div>
+
+<style>
+  .card {
+    padding: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+  }
+  .row {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .table th,
+  .table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #eee;
+  }
+  .table-striped tbody tr:nth-child(odd) {
+    background: #fafafa;
+  }
+</style>
+{% endblock %}

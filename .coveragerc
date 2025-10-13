@@ -1,0 +1,39 @@
+[run]
+branch = True
+source =
+    tewa
+    core
+omit =
+    */migrations/*
+    */tests/*
+    */site-packages/*
+    .venv/*
+    # skip plumbing we don't test
+    core/urls.py
+    core/views.py
+    core/constants.py
+    core/enums.py
+    core/typing.py
+    core/utils/utils.py
+    tewa/urls.py
+    tewa/views.py
+    tewa/admin.py
+    tewa/forms.py
+    tewa/serializers.py
+    tewa/api/*
+    tewa/management/commands/*
+    tewa/tasks.py
+    tewa/services/csv_import.py
+    tewa/services/engine.py
+    tewa/services/sampling.py
+    tewa/services/score_breakdown_service.py
+    tewa/services/scoring.py
+    tewa/services/serializers.py
+
+[report]
+include =
+    tewa/models.py
+    tewa/services/kinematics.py
+    core/utils/geodesy.py
+skip_covered = True
+show_missing = True

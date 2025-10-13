@@ -27,12 +27,15 @@ class ComputeAtLinearInterpolationTests(TestCase):
             name="Interp-Scenario",
             start_time=timezone.now(),
         )
+
+
         self.da = DefendedAsset.objects.create(
+            scenario=self.sc,            # <-- required FK
             name="DA-Alpha",
             lat=28.6139,
             lon=77.2090,
             radius_km=25.0,
-        )
+)
 
         # Model params
         ModelParams.objects.create(

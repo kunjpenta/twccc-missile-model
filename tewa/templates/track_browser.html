@@ -1,0 +1,102 @@
+<!-- templates/track_browser.html -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Track Browser</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: #f4f4f4;
+      }
+      input,
+      button {
+        padding: 6px;
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Track Browser</h2>
+
+    <label>Track ID:</label>
+    <input type="text" id="trackId" />
+    <label>Scenario ID:</label>
+    <input type="text" id="scenarioId" />
+    <button onclick="searchTracks()">Search</button>
+
+    <table id="trackTable">
+      <thead>
+        <tr>
+          <th>Track ID</th>
+          <th>Lat</th>
+          <th>Lon</th>
+          <th>Altitude (m)</th>
+          <th>Speed (m/s)</th>
+          <th>Heading (deg)</th>
+          <th>Threats</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <script>
+      function searchTracks() {
+        const trackId = document.getElementById("trackId").value;
+        const scenarioId = document.getElementById("scenarioId").value;
+
+        let url = `/api/tewa/tracks/?`;
+        if (trackId) url += `track_id=${trackId}&`;
+        if (scenarioId) url += `scenario_id=${scenarioId}&`;
+
+        fetch(url)
+          .then((res) => res.json())
+          .then((data) => {
+            const tbody = document.querySelector("#trackTable tbody");
+            tbody.innerHTML = "";
+            data.forEach((track) => {
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+          <td>${track.track_id}</td>
+          <td>${track.lat}</td>
+          <td>${track.lon}</td>
+          <td>${track.alt_m}</td>
+          <td>${track.speed_mps}</td>
+          <td>${track.heading_deg}</td>
+          <td><button onclick="viewTrack('${track.track_id}')">View Threats</button></td>
+        `;
+              tbody.appendChild(tr);
+            });
+          });
+      }
+
+      function viewTrack(trackId) {
+        fetch(`/api/tewa/tracks/${trackId}/`)
+          .then((res) => res.json())
+          .then((data) => {
+            let threats = "";
+            data.threat_scores.forEach((t) => {
+              threats += `${t.da__name}: ${t.score.toFixed(3)} at ${new Date(
+                t.computed_at
+              ).toLocaleString()}<br>`;
+            });
+            alert(`Track: ${data.track_id}\nThreats:\n${threats}`);
+          });
+      }
+    </script>
+  </body>
+</html>

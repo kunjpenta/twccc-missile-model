@@ -32,23 +32,31 @@ def _strip_row(row: Dict[str, Any]) -> Dict[str, Any]:
 def import_csv(file_content: str, *, scenario_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Parse CSV and create Track + TrackSample rows.
-    - Accepts optional scenario_id to scope tracks; if omitted, Track.scenario=None.
+    - Accepts optional scenario_id to scope tracks; if omitted, a default Scenario is used.
     - Expects headers:
       track_id,lat,lon,alt_m,speed_mps,heading_deg,timestamp
     """
-    reader = csv.DictReader(StringIO(file_content))
-
-    created_tracks = 0
-    created_samples = 0
-    rows_processed = 0
-    errors: List[str] = []
-
-    scenario = None
+    # Ensure we have a Scenario (Track.scenario is typically NOT NULL)
+    scenario: Optional[Scenario]
     if scenario_id is not None:
         try:
             scenario = Scenario.objects.get(id=scenario_id)
         except Scenario.DoesNotExist:
             return {"message": "Upload failed", "errors": [f"Scenario {scenario_id} not found"]}
+    else:
+        # Reuse/create a default scenario for CSV imports
+        scenario, _ = Scenario.objects.get_or_create(
+            name="CSV Import",
+            defaults={"start_time": timezone.now()},
+        )
+
+    # Be tolerant of spaces after commas in CSV
+    reader = csv.DictReader(StringIO(file_content), skipinitialspace=True)
+
+    created_tracks = 0
+    created_samples = 0
+    rows_processed = 0
+    errors: List[str] = []
 
     for row in reader:
         rows_processed += 1
@@ -74,12 +82,19 @@ def import_csv(file_content: str, *, scenario_id: Optional[int] = None) -> Dict[
             alt_m = float(row["alt_m"])
             speed_mps = float(row["speed_mps"])
             heading_deg = float(row["heading_deg"])
-            t = _parse_ts_aware_utc(row["timestamp"])
+
+            try:
+                t = _parse_ts_aware_utc(row["timestamp"])
+            except Exception as e:
+                # Fall back to now() but record the issue
+                errors.append(
+                    f"Row {rows_processed}: bad timestamp {row['timestamp']!r} ({e}); using now()")
+                t = timezone.now()
 
             # Create (or fetch) Track with defaults for required snapshot fields
             with transaction.atomic():
                 track, created = Track.objects.get_or_create(
-                    scenario=scenario,  # may be None (allowed)
+                    scenario=scenario,  # now guaranteed non-null
                     track_id=track_id,
                     defaults={
                         "lat": lat,
@@ -98,12 +113,13 @@ def import_csv(file_content: str, *, scenario_id: Optional[int] = None) -> Dict[
                     track.alt_m = alt_m
                     track.speed_mps = speed_mps
                     track.heading_deg = heading_deg
+                    # 'updated_at' exists if your models inherit TimeStamped; if not, drop it.
                     track.save(update_fields=[
-                        "lat", "lon", "alt_m", "speed_mps", "heading_deg", "updated_at"])
+                               "lat", "lon", "alt_m", "speed_mps", "heading_deg", "updated_at"])
 
-                # Handle TrackSample creation and check for duplicates
+                # Create TrackSample (dedupe on (track, t))
                 try:
-                    track_sample, created_sample = TrackSample.objects.get_or_create(
+                    _, created_sample = TrackSample.objects.get_or_create(
                         track=track,
                         t=t,
                         defaults={
@@ -111,14 +127,11 @@ def import_csv(file_content: str, *, scenario_id: Optional[int] = None) -> Dict[
                             "lon": lon,
                             "alt_m": alt_m,
                             "speed_mps": speed_mps,
-                            "heading_deg": heading_deg
-                        }
+                            "heading_deg": heading_deg,
+                        },
                     )
                     if created_sample:
                         created_samples += 1
-                    else:
-                        # If duplicate, update existing TrackSample or skip
-                        pass
                 except ValidationError as e:
                     errors.append(f"Row {rows_processed} error: {e}")
 

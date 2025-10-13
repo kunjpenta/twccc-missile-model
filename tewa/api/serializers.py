@@ -73,3 +73,9 @@ class TrackSerializer(serializers.ModelSerializer):
         model = Track
         fields = ['id', 'track_id', 'lat', 'lon', 'alt_m',
                   'speed_mps', 'heading_deg', 'scenario']
+
+
+class ScoreBreakdownQuerySerializer(serializers.Serializer):
+    scenario_id = serializers.IntegerField()
+    da_id = serializers.IntegerField()       # <— changed
+    track_id = serializers.IntegerField()
