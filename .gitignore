@@ -25,3 +25,13 @@ media/
 # Others
 *.egg-info/
 *.egg
+
+
+.coverage
+htmlcov/
+pytest_cache/
+*.sql
+*.bak
+tewa/migrations/*.pyc
+.DS_Store
+Thumbs.db
