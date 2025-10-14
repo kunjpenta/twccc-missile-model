@@ -35,3 +35,6 @@ pytest_cache/
 tewa/migrations/*.pyc
 .DS_Store
 Thumbs.db
+
+# ignore core dumps
+core.*
