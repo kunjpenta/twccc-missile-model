@@ -1,49 +1,56 @@
 # tewa/api/urls.py
-from django.urls import include, path, re_path
-from django.views.decorators.csrf import csrf_exempt
+from django.urls import path
+from django.utils.translation import activate
 from rest_framework.routers import DefaultRouter
 
-from . import views as api
-from .views import ScoreBreakdownView
+from . import views
+from .views import (
+    ScenarioParamsView,
+    score_history_png_view,  # ← import the view
+)
 
-# Keep app_name only if you plan to include with a namespace and use tewa_api:... in reverse().
-# app_name = "tewa_api"
+activate("en")  # harmless with USE_I18N=False; fine to keep
 
 router = DefaultRouter()
-router.register(r"scenario",    api.ScenarioViewSet,     basename="scenario")
-router.register(r"da",          api.DefendedAssetViewSet, basename="da")
-router.register(r"track",       api.TrackViewSet,        basename="track")
-router.register(r"tracksample", api.TrackSampleViewSet,
+router.register(r"scenario",     views.ScenarioViewSet,
+                basename="scenario")
+router.register(r"da",           views.DefendedAssetViewSet, basename="da")
+router.register(r"track",        views.TrackViewSet,         basename="track")
+router.register(r"tracksample",  views.TrackSampleViewSet,
                 basename="tracksample")
-router.register(r"threatscore", api.ThreatScoreViewSet,
+router.register(r"threatscore",  views.ThreatScoreViewSet,
                 basename="threatscore")
 
 urlpatterns = [
-    # root + router
-    path("", api.root, name="root"),
-    path("", include(router.urls)),
+    path("", views.root, name="root"),
+    path("scenarios/", views.scenarios, name="scenarios"),
+    path("score/", views.score, name="score-list-alias"),
 
-    # Single (and only) score breakdown route — matches reverse("score-breakdown")
-    path("score/breakdown", ScoreBreakdownView.as_view(), name="score-breakdown"),
-    # Function endpoints (support both with/without trailing slash)
-    re_path(r"^scenarios/?$",           api.scenarios,         name="scenarios"),
-    re_path(r"^score/?$",               api.score,             name="score"),
-    re_path(r"^ranking/?$",             api.ranking,           name="ranking"),
-    re_path(r"^compute_now/?$",
-            csrf_exempt(api.compute_now),      name="compute_now"),
-    re_path(r"^compute_at/?$",
-            csrf_exempt(api.compute_at),       name="compute_at"),
-    re_path(r"^upload_tracks/?$",
-            csrf_exempt(api.upload_tracks),    name="upload_tracks"),
-    re_path(r"^calculate_scores/?$",
-            csrf_exempt(api.calculate_scores), name="calculate_scores"),
+    # compute / analytics / uploads
+    path("compute_at", views.compute_at, name="compute-at"),  # no trailing slash
+    path("compute_now/", views.compute_now, name="compute_now"),
+    path("ranking/", views.ranking, name="ranking"),
+    path("calculate_scores/", views.calculate_scores, name="calculate_scores"),
+    path("upload_tracks/", views.upload_tracks, name="upload_tracks"),
 
-    # Track detail by id
-    re_path(r"^tracks/(?P<track_id>[^/]+)/?$",
-            api.track_detail, name="track_detail"),
+    # score breakdown (the name used by tests)
+    path("score-breakdown", views.score_breakdown, name="score-breakdown"),
+
+    # querystring-based track detail
+    path("tracks/detail/", views.track_detail, name="track-detail"),
+    path("debug/score", views.score_breakdown_debug,
+         name="score-breakdown-debug"),
+    path("export/threat_board.csv", views.export_threat_board_csv,
+         name="export_threat_board_csv"),
+    path("scenarios/<int:scenario_id>/params/",
+         ScenarioParamsView.as_view(), name="scenario_params"),
+    path("charts/score_history.png",
+         score_history_png_view, name="score_history_png"),
+
+
 ]
 
+urlpatterns += router.urls
 
-urlpatterns = [
 
-]
+

@@ -1,81 +1,141 @@
 # tewa/api/serializers.py
+from __future__ import annotations
+from typing import cast
 
 from rest_framework import serializers
 
-from tewa.models import DefendedAsset, Scenario, ThreatScore, Track, TrackSample
+from tewa.models import ModelParams
 
-# -----------------------------
-# Existing serializers
-# -----------------------------
+from ..models import (
+    DefendedAsset,
+    Scenario,
+    ThreatScore,
+    Track,
+    TrackSample,
+)
 
-
-class TrackSampleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TrackSample
-        fields = ['id', 'track', 't', 'lat', 'lon',
-                  'alt_m', 'speed_mps', 'heading_deg']
-
-
-class ThreatScoreSerializer(serializers.ModelSerializer):
-    da_name = serializers.CharField(source="da.name", read_only=True)
-    track_id = serializers.CharField(source="track.track_id", read_only=True)
-
-    class Meta:
-        model = ThreatScore
-        fields = [
-            "id", "scenario", "track", "da", "track_id", "da_name",
-            "cpa_km", "tcpa_s", "tdb_km", "twrp_s", "score", "computed_at"
-        ]
-
-# -----------------------------
-# New serializer for compute POST
-# -----------------------------
-
-
-class ComputeThreatSerializer(serializers.Serializer):
-    scenario_id = serializers.IntegerField()
-    da_id = serializers.PrimaryKeyRelatedField(
-        queryset=DefendedAsset.objects.all(), source="da"
-    )
-    track_id = serializers.PrimaryKeyRelatedField(
-        queryset=Track.objects.all(), source="track"
-    )
-
-    def validate(self, attrs):
-        track = attrs['track']
-        scenario_id = attrs.get('scenario_id')  # safer than initial_data
-        if track.scenario.id != scenario_id:
-            raise serializers.ValidationError(
-                "Track does not belong to the given scenario.")
-        return attrs
-
-# tewa/api/serializers.py
-
-
-class DefendedAssetSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DefendedAsset
-        fields = ['id', 'name', 'lat', 'lon',
-                  'radius_km', 'created_at', 'updated_at']
+# ---------- Model serializers used by views_read.py ----------
 
 
 class ScenarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Scenario
-        fields = ['id', 'name', 'start_time', 'end_time', 'notes']
+        fields = "__all__"
 
 
-# tewa/serializers.py
+class DefendedAssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DefendedAsset
+        fields = "__all__"
 
 
 class TrackSerializer(serializers.ModelSerializer):
     class Meta:
         model = Track
-        fields = ['id', 'track_id', 'lat', 'lon', 'alt_m',
-                  'speed_mps', 'heading_deg', 'scenario']
+        fields = "__all__"
 
 
-class ScoreBreakdownQuerySerializer(serializers.Serializer):
+class TrackSampleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrackSample
+        fields = "__all__"
+
+
+class ThreatScoreSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ThreatScore
+        fields = "__all__"
+
+
+# ---------- Task 21: Score breakdown serializer ----------
+
+class MetricsSerializer(serializers.Serializer):
+    cpa_m = serializers.FloatField()
+    tcpa_s = serializers.FloatField()
+    tdb_s = serializers.FloatField()
+    twrp_s = serializers.FloatField()
+
+
+class NormalizedSerializer(serializers.Serializer):
+    cpa = serializers.FloatField()
+    tcpa = serializers.FloatField()
+    tdb = serializers.FloatField()
+    twrp = serializers.FloatField()
+
+
+class WeightsSerializer(serializers.Serializer):
+    cpa = serializers.FloatField()
+    tcpa = serializers.FloatField()
+    tdb = serializers.FloatField()
+    twrp = serializers.FloatField()
+
+
+class ContributionsSerializer(serializers.Serializer):
+    cpa = serializers.FloatField()
+    tcpa = serializers.FloatField()
+    tdb = serializers.FloatField()
+    twrp = serializers.FloatField()
+
+
+class ParamsSerializer(serializers.Serializer):
+    # empty on purpose for now
+    pass
+
+
+class ScoreBreakdownSerializer(serializers.Serializer):
     scenario_id = serializers.IntegerField()
-    da_id = serializers.IntegerField()       # <— changed
-    track_id = serializers.IntegerField()
+    track_id = serializers.CharField()
+    da_id = serializers.IntegerField()
+    computed_at = serializers.DateTimeField()
+    metrics = MetricsSerializer()
+    normalized = NormalizedSerializer()
+    weights = WeightsSerializer()
+    contributions = ContributionsSerializer()
+    score = serializers.FloatField()
+    params = ParamsSerializer()
+    explain = serializers.ListField(child=serializers.CharField())
+
+    # legacy passthroughs for backward-compat tests/UI
+    cpa_km = serializers.FloatField(required=False, allow_null=True)
+    tcpa_s = serializers.FloatField(required=False, allow_null=True)
+    tdb_km = serializers.FloatField(required=False, allow_null=True)
+    twrp_s = serializers.FloatField(required=False, allow_null=True)
+    total_score = serializers.FloatField(required=False, allow_null=True)
+
+# tewa/api/serializers.py
+
+
+class ScenarioParamsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ModelParams
+        fields = [
+            "scenario",
+            "R_W_m", "R_DA_m", "tick_s",
+            "w_cpa", "w_tcpa", "w_tdb", "w_twrp",
+            "sigma_cpa", "sigma_tcpa", "sigma_tdb", "sigma_twrp",
+            "updated_at",
+        ]
+        read_only_fields = ["scenario", "updated_at"]
+
+    def validate(self, attrs):
+        # Merge instance values with incoming attrs for cross-field validation
+        data = {**{f: getattr(self.instance, f, None)
+                   for f in self.fields}, **attrs}
+
+        def _f(x):
+            return float(x) if x is not None else 0.0
+
+        wsum = _f(data.get("w_cpa")) + _f(data.get("w_tcpa")) + \
+            _f(data.get("w_tdb")) + _f(data.get("w_twrp"))
+        if abs(wsum - 1.0) > 1e-6:
+            raise serializers.ValidationError("Weights must sum to 1.0")
+
+        tick = data.get("tick_s")
+        if tick is None or tick <= 0:
+            raise serializers.ValidationError("tick_s must be > 0")
+
+        R_W, R_DA = data.get("R_W_m"), data.get("R_DA_m")
+        if R_W is not None and R_DA is not None and R_DA >= R_W:
+            raise serializers.ValidationError("R_DA_m must be < R_W_m")
+
+        return attrs

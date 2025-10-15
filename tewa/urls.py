@@ -1,48 +1,37 @@
-# tewa/urls.py
+# tewa/urls.py  — HTML routes only
+
+
+from .views import scenario_assumptions_view
+from django.contrib.auth import views as auth_views
 from django.urls import path
+from django.views.generic import TemplateView
 
-from tewa.api import views as api_views
-
-from . import views
-from .views import score_breakdown_page, search_tracks, track_detail, upload_tracks_form
-
-app_name = "tewa"
+from . import views  # your HTML views
 
 urlpatterns = [
-    path("", api_views.root, name="root"),
-    path("upload_tracks/", views.upload_tracks, name="upload_tracks"),
-    path("scenarios/", views.list_scenarios, name="list_scenarios"),
-    path("compute_now/", views.compute_now, name="compute_now"),
-    path("scenario/<int:scenario_id>/",
+    path("", views.home, name="home"),
+    path("about/", TemplateView.as_view(template_name="about.html"), name="about"),
+    path("contact/", TemplateView.as_view(template_name="contact.html"), name="contact"),
+
+    # Auth
+    path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+
+    path("scenarios/<int:scenario_id>/",
          views.scenario_detail, name="scenario_detail"),
-    path("scenario/<int:scenario_id>/compute_now/",
+    path("scenarios/<int:scenario_id>/compute-now/",
          views.compute_now_scenario, name="compute_now_scenario"),
-
-    # DA CRUD
-    path("das/", views.da_list, name="da_list"),
-    path("das/create/", views.da_create, name="da_create"),
-    path("das/<int:da_id>/edit/", views.da_edit, name="da_edit"),
-    path("das/<int:da_id>/delete/", views.da_delete, name="da_delete"),
-
-    # Tracks
-    path("tracks/<str:track_id>/", track_detail, name="track_detail"),
-    path("tracks/", search_tracks, name="search_tracks"),
-
-    # Threat board
-    path("threat_board/", views.threat_board, name="threat_board"),
-
-    # Forms
-    path("upload_tracks_form/", upload_tracks_form, name="upload_tracks_form"),
-
-    # Score Breakdown (HTML page)
+    path("da/", views.da_list, name="da_list"),
+    path("da/create/", views.da_create, name="da_create"),
+    path("da/<int:da_id>/edit/", views.da_edit, name="da_edit"),
+    path("da/<int:da_id>/delete/", views.da_delete, name="da_delete"),
+    path("upload-tracks/", views.upload_tracks_form, name="upload_tracks_form"),
+    path("tracks/browser/", views.track_browser_page, name="track_browser_page"),
+    path("score-breakdown/<int:scenario_id>/<int:da_id>/<int:track_id>/",
+         views.score_breakdown_page, name="score_breakdown_page"),
     path(
-        "score/<int:scenario_id>/<int:da_id>/<int:track_id>/breakdown/",
-        score_breakdown_page,
-        name="score-breakdown-page",
-    ),
-    path(
-        "score/breakdown/<int:scenario_id>/<int:da_id>/<int:track_id>/",
-        api_views.ScoreBreakdownView.as_view(),
-        name="score_breakdown_path",
+        "scenarios/<int:scenario_id>/assumptions/",
+        scenario_assumptions_view,
+        name="scenario_assumptions",
     ),
 ]

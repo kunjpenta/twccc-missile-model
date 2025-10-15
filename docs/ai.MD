@@ -5,3 +5,7 @@ We have made a backend. i have also write document for forntend team to integrat
 I haev also made frontend in html css so write a task 10 work for frontend spo that i can give to another ai to uinderstand concept and work.
 
 I have also write docuemnt for data base manager role. so write for them for task 10
+
+
+write this task document so that i can give the other ai to understand what we hacve doi ne adn it can better give me the answers
+

@@ -1,0 +1,216 @@
+<!-- templates/components/score_breakdown.html -->
+<div
+  id="scoreBreakdownModal"
+  class="modal"
+  tabindex="-1"
+  role="dialog"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background: #121212; color: #eaeaea">
+      <div class="modal-header">
+        <h5 class="modal-title">Score Breakdown</h5>
+        <button
+          type="button"
+          class="close"
+          data-dismiss="modal"
+          aria-label="Close"
+          onclick="SB.close()"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div id="sb-loading" style="display: none">Loading…</div>
+        <div id="sb-error" style="display: none; color: #ff7a7a"></div>
+
+        <div id="sb-meta" style="display: none" class="mb-2">
+          <div><b>Scenario:</b> <span id="sb-scenario"></span></div>
+          <div><b>Track:</b> <span id="sb-track"></span></div>
+          <div><b>DA:</b> <span id="sb-da"></span></div>
+          <div><b>Computed at (UTC):</b> <span id="sb-computed"></span></div>
+        </div>
+
+        <div id="sb-content" style="display: none">
+          <h6>Metrics (raw)</h6>
+          <table class="table table-sm table-dark">
+            <tbody>
+              <tr>
+                <td>CPA</td>
+                <td>
+                  <span id="sb-cpa-m"></span> m (<span id="sb-cpa-km"></span>
+                  km)
+                </td>
+              </tr>
+              <tr>
+                <td>TCPA</td>
+                <td><span id="sb-tcpa-s"></span> s</td>
+              </tr>
+              <tr>
+                <td>TDB</td>
+                <td>
+                  <span id="sb-tdb-s"></span> s (~<span id="sb-tdb-km"></span>
+                  km)
+                </td>
+              </tr>
+              <tr>
+                <td>TWRP</td>
+                <td><span id="sb-twrp-s"></span> s</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h6>Normalized, Weights & Contributions</h6>
+          <table class="table table-sm table-dark">
+            <thead>
+              <tr>
+                <th>Comp</th>
+                <th>Norm</th>
+                <th>Weight</th>
+                <th>Contribution</th>
+              </tr>
+            </thead>
+            <tbody id="sb-nwc-rows"></tbody>
+          </table>
+
+          <div class="mt-2">
+            <b>Final Score:</b> <span id="sb-score"></span>
+            <small class="text-muted"
+              >(total_score alias: <span id="sb-total-score"></span>)</small
+            >
+          </div>
+
+          <div class="mt-3">
+            <b>Explain:</b>
+            <ul id="sb-explain" style="margin-bottom: 0"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="SB.close()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.SB = {
+    open: function ({ scenarioId, trackId, daId, at }) {
+      const modal = document.getElementById("scoreBreakdownModal");
+      document.getElementById("sb-content").style.display = "none";
+      document.getElementById("sb-error").style.display = "none";
+      document.getElementById("sb-loading").style.display = "block";
+
+      // Build URL (no trailing slash)
+      const p = new URLSearchParams({
+        scenario_id: scenarioId,
+        track_id: trackId,
+        da_id: daId,
+      });
+      if (at) p.set("at", at);
+      const url = `/api/tewa/score-breakdown?${p.toString()}`;
+
+      fetch(url)
+        .then((r) =>
+          r.json().then((j) => ({ ok: r.ok, status: r.status, body: j }))
+        )
+        .then(({ ok, status, body }) => {
+          document.getElementById("sb-loading").style.display = "none";
+          if (!ok) {
+            document.getElementById("sb-error").textContent =
+              body && body.detail ? body.detail : `Error ${status}`;
+            document.getElementById("sb-error").style.display = "block";
+            return;
+          }
+
+          // Meta
+          document.getElementById("sb-scenario").textContent = body.scenario_id;
+          document.getElementById("sb-track").textContent = body.track_id;
+          document.getElementById("sb-da").textContent = body.da_id;
+          document.getElementById("sb-computed").textContent = body.computed_at;
+          document.getElementById("sb-meta").style.display = "block";
+
+          // Metrics
+          document.getElementById("sb-cpa-m").textContent = (
+            body.metrics?.cpa_m ?? 0
+          ).toFixed(2);
+          document.getElementById("sb-cpa-km").textContent = (
+            body.cpa_km ?? (body.metrics?.cpa_m || 0) / 1000
+          ).toFixed(3);
+          document.getElementById("sb-tcpa-s").textContent = (
+            body.tcpa_s ??
+            body.metrics?.tcpa_s ??
+            0
+          ).toFixed(2);
+          document.getElementById("sb-tdb-s").textContent = (
+            body.metrics?.tdb_s ?? 0
+          ).toFixed(2);
+          document.getElementById("sb-tdb-km").textContent = (
+            body.tdb_km ?? 0
+          ).toFixed(3);
+          document.getElementById("sb-twrp-s").textContent = (
+            body.twrp_s ??
+            body.metrics?.twrp_s ??
+            0
+          ).toFixed(2);
+
+          // N/W/C table
+          const comps = ["cpa", "tcpa", "tdb", "twrp"];
+          const nwc = document.getElementById("sb-nwc-rows");
+          nwc.innerHTML = "";
+          comps.forEach((c) => {
+            const tr = document.createElement("tr");
+            const norm = body.normalized?.[c] ?? 0;
+            const w = body.weights?.[c] ?? 0;
+            const cont = body.contributions?.[c] ?? 0;
+            tr.innerHTML = `<td>${c.toUpperCase()}</td>
+                          <td>${norm.toFixed(3)}</td>
+                          <td>${w.toFixed(3)}</td>
+                          <td>${cont.toFixed(3)}</td>`;
+            nwc.appendChild(tr);
+          });
+
+          // Scores
+          const score = body.score ?? 0;
+          const total = body.total_score ?? score;
+          document.getElementById("sb-score").textContent = score.toFixed(3);
+          document.getElementById("sb-total-score").textContent =
+            total.toFixed(3);
+
+          // Explain
+          const ex = document.getElementById("sb-explain");
+          ex.innerHTML = "";
+          (body.explain || []).forEach((s) => {
+            const li = document.createElement("li");
+            li.textContent = s;
+            ex.appendChild(li);
+          });
+
+          document.getElementById("sb-content").style.display = "block";
+        })
+        .catch((err) => {
+          document.getElementById("sb-loading").style.display = "none";
+          document.getElementById("sb-error").textContent =
+            err?.message || "Network error";
+          document.getElementById("sb-error").style.display = "block";
+        });
+
+      // Show modal (Bootstrap) or simple display if you don’t use Bootstrap
+      if (window.jQuery && jQuery.fn.modal) {
+        jQuery(modal).modal("show");
+      } else {
+        modal.style.display = "block";
+      }
+    },
+    close: function () {
+      const modal = document.getElementById("scoreBreakdownModal");
+      if (window.jQuery && jQuery.fn.modal) {
+        jQuery(modal).modal("hide");
+      } else {
+        modal.style.display = "none";
+      }
+    },
+  };
+</script>

@@ -536,3 +536,219 @@ Add uncertainty handling: discount components by confidence (e.g., sensor qualit
 Introduce scenario doctrine packs: pre-defined weight/scale profiles for different missions (point defense vs. area defense).
 
 That’s the conceptual backbone of what you’ve built: a principled, interpretable, and extensible threat-scoring pipeline grounded in simple, rigorous normalization and clear operational semantics.
+
+Backend Dev Handoff — Task 21 (Score Breakdown View)
+Goal
+
+Expose per-threat score breakdown (CPA, TCPA, TDB, TWRP) with raw values, normalized values, weights, per-component contributions, final score, timestamp; provide JSON API + minimal HTML partial/modal.
+
+Current Status
+
+Endpoint: GET /api/tewa/score-breakdown (no trailing slash)
+
+Query params (required): scenario_id (int), track_id (int PK or public string), da_id (int)
+Optional: at (ISO-8601 UTC) to select a snapshot <= at; otherwise use latest.
+
+Response: Includes metrics, normalized, weights, contributions, score, total_score (legacy alias), computed_at, and legacy flat fields (cpa_km, tcpa_s, tdb_km, twrp_s) for backward compatibility.
+
+Tests: All existing tests pass after restoring model serializers and ensuring total_score. If one test fails, view layer now backfills total_score from score/final_score.
+
+Files Touched
+
+1. Routing
+
+missile_model/urls.py
+
+path("api/tewa/", include("tewa.api.urls"))
+
+tewa/api/urls.py
+
+path("score-breakdown", views.score_breakdown, name="score-breakdown")
+
+(Keeps existing routes unchanged; no trailing slash by design.)
+
+2. View (new endpoint)
+
+tewa/api/views.py
+
+Adds score_breakdown(request) handler
+
+Validates params; returns:
+
+422 missing/invalid
+
+400 bad at
+
+404 not found
+
+500 generic error
+
+Uses ScoreBreakdownSerializer to shape response
+
+View-level guard: if total_score is None, fills from score or final_score.
+
+3. Serializer (Task 21 + legacy passthroughs)
+
+tewa/api/serializers.py
+
+Restored model serializers expected by views_read.py:
+
+ScenarioSerializer, DefendedAssetSerializer, TrackSerializer, TrackSampleSerializer, ThreatScoreSerializer
+
+Added Task 21 structured serializers:
+
+MetricsSerializer, NormalizedSerializer, WeightsSerializer, ContributionsSerializer, ParamsSerializer
+
+ScoreBreakdownSerializer fields:
+
+scenario_id, track_id, da_id, computed_at, metrics, normalized, weights, contributions, score, params, explain
+
+Legacy passthroughs: cpa_km, tcpa_s, tdb_km, twrp_s, total_score (all optional/nullable)
+
+4. Service (non-breaking single entry point)
+
+tewa/services/score_breakdown_service.py
+
+Public API:
+
+get_score_breakdown(scenario_id: int, track_id: str, da_id: int, at_iso: Optional[str]) -> Dict[str, Any]
+
+Behavior:
+
+Validates Scenario and DefendedAsset exist (404 semantics).
+
+Compute path (preferred): calls existing tewa.services.score_breakdown.get_score_breakdown with persist=True.
+
+Normalizes computed_at to UTC ISO.
+
+Ensures legacy flat fields via \_ensure_legacy_flat_fields.
+
+Backfills score/total_score from best available source: score → final_score → latest ThreatScore.score.
+
+Fallback path: if compute raises MultipleObjectsReturned or any exception, or data insufficient:
+
+Resolves track_id either as PK or latest row with given track_id string.
+
+Fetches latest ThreatScore row (optionally <= at).
+
+Shapes response:
+
+metrics.cpa_m (km→m), metrics.tdb_s proxy from tdb_km assuming nominal closure 250 m/s (keeps old logic untouched).
+
+Legacy flat fields cpa_km, tcpa_s, tdb_km, twrp_s exposed directly from DB row.
+
+score and total_score set from DB row.
+
+normalized/weights/contributions = zeros (can’t reconstruct without compute).
+
+params = {}; explain = static notes.
+
+Helpers:
+
+\_resolve_track_pk (accepts PK or public track_id, picks latest row)
+
+\_latest_threatscore (orders by -computed_at, -id)
+
+\_ensure_legacy_flat_fields (injects top-level cpa_km, etc. from components or derives from metrics.cpa_m)
+
+5. Views import wrapper
+
+tewa/api/views.py continues to import compute/read views to keep old modules stable.
+
+API Contract (as returned)
+
+Example:
+
+{
+"scenario_id": 1,
+"track_id": "TGT001",
+"da_id": 3,
+"computed_at": "2025-10-14T10:02:00Z",
+"metrics": { "cpa_m": 1234.5, "tcpa_s": 67.8, "tdb_s": 90.2, "twrp_s": 12.0 },
+"normalized": { "cpa": 0.82, "tcpa": 0.61, "tdb": 0.34, "twrp": 0.74 },
+"weights": { "cpa": 0.35, "tcpa": 0.25, "tdb": 0.20, "twrp": 0.20 },
+"contributions": { "cpa": 0.287, "tcpa": 0.153, "tdb": 0.068, "twrp": 0.148 },
+"score": 0.656,
+"total_score": 0.656,
+"params": {},
+"explain": [
+"Lower CPA → higher normalized threat (inverted scale).",
+"Shorter TCPA → higher immediacy risk.",
+"TDB gauges time to DA boundary penetration.",
+"TWRP indicates time to weapon release window."
+],
+"cpa_km": 1.2345,
+"tcpa_s": 67.8,
+"tdb_km": 0.0902,
+"twrp_s": 12.0
+}
+
+Errors
+
+422 — missing/invalid params (scenario_id, da_id must be ints)
+
+400 — bad at format (non-ISO)
+
+404 — no breakdown for given IDs/time
+
+500 — internal error
+
+How to Use / Sanity Checks
+
+Compute a fresh snapshot (optional):
+
+curl -s -X POST -H 'Content-Type: application/json' \
+ -d '{"scenario_id": 1}' \
+ "http://127.0.0.1:8000/api/tewa/compute_now/"
+
+List DAs & Tracks:
+
+curl -s "http://127.0.0.1:8000/api/tewa/da/" | jq -c '.[] | {id, name}'
+curl -s "http://127.0.0.1:8000/api/tewa/track/" | jq -c '.[] | {id, track_id}'
+
+Get score breakdown (PK or public id for track_id):
+
+curl -s "http://127.0.0.1:8000/api/tewa/score-breakdown?scenario_id=1&track_id=T1&da_id=3" | jq .
+curl -s "http://127.0.0.1:8000/api/tewa/score-breakdown?scenario_id=1&track_id=11&da_id=3" | jq .
+
+Use a specific snapshot time:
+
+curl -s "http://127.0.0.1:8000/api/tewa/score-breakdown?scenario_id=1&track_id=T1&da_id=3&at=2025-10-14T07:38:00Z" | jq .
+
+Implementation Notes / Compatibility
+
+No changes to existing compute engine; we wrap it. If compute returns multiple rows or fails, we fall back to stored ThreatScore.
+
+Legacy consumers relying on flat fields and total_score will keep working.
+
+tdb_s in fallback is a proxy from tdb_km using nominal closure 250 m/s. Replace with actual time once available in the compute output.
+
+Minimal HTML UI (hooks only)
+
+Add a “View breakdown” action from Threat Board rows; point to /api/tewa/score-breakdown?....
+
+A minimal partial target is templates/components/score_breakdown.html (not included here). It should render:
+
+raw metrics, normalized, weights, contributions, final score, computed_at.
+
+Link injection planned in templates/boards/da_board.html.
+
+Caching (Optional P1)
+
+Suggested key: scenario:{id}:track:{id or public}:da:{id}:at:{ts-or-latest}
+
+Integrate in get_score_breakdown compute path before calling engine; invalidate on new compute batch if you add batch IDs.
+
+Where to Continue
+
+Frontend modal partial: templates/components/score_breakdown.html
+
+Threat Board action wiring: templates/boards/da_board.html
+
+Expand tests:
+
+tewa/tests/test_score_breakdown_api.py (already extended)
+
+New template test: tewa/tests/test_templates_breakdown.py (render/200/fields)
+
+If the next agent needs any specific file contents (e.g., ScoreBreakdownSerializer or the service function), ask and I’ll paste exact versions.

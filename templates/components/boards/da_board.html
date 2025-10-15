@@ -1,0 +1,7 @@
+<!-- templates/boards/da_board.html (somewhere in your threat row template) -->
+<button class="btn btn-sm btn-outline-info"
+        onclick="SB.open({scenarioId: {{ scenario.id }}, trackId: '{{ threat.track_id }}', daId: {{ da.id }} })">
+  View breakdown
+</button>
+
+{% include "components/score_breakdown.html" %}

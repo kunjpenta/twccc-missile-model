@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container" style="max-width:980px; margin: 0 auto; padding: 16px;">
+  <h3 style="margin:0 0 12px;">Scenario Assumptions — {{ scenario.name }}</h3>
+
+  {# Flash messages #}
+  {% if messages %}
+    <ul class="messages" style="list-style:none; padding:0; margin:0 0 12px;">
+      {% for message in messages %}
+        <li style="padding:8px 10px; border-radius:8px; margin-bottom:6px; background:#10141c; color:#e7e9ee; border:1px solid #22293a;">
+          {{ message }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post" novalidate style="display:block;">
+    {% csrf_token %}
+
+    <div style="display:grid; gap:12px; grid-template-columns:repeat(3, minmax(0,1fr));">
+      <div>
+        <h5 style="margin:8px 0;">Ranges & Tick</h5>
+        <label>Weapon Range (m)</label>
+        {{ form.R_W_m }}
+        {% if form.R_W_m.errors %}
+          <div class="errorlist">{{ form.R_W_m.errors }}</div>
+        {% endif %}
+
+        <label>DA Radius (m)</label>
+        {{ form.R_DA_m }}
+        {% if form.R_DA_m.errors %}
+          <div class="errorlist">{{ form.R_DA_m.errors }}</div>
+        {% endif %}
+
+        <label>Tick (s)</label>
+        {{ form.tick_s }}
+        {% if form.tick_s.errors %}
+          <div class="errorlist">{{ form.tick_s.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div>
+        <h5 style="margin:8px 0;">Weights (sum = 1.0)</h5>
+        <label>CPA</label>
+        {{ form.w_cpa }} {% if form.w_cpa.errors %}<div class="errorlist">{{ form.w_cpa.errors }}</div>{% endif %}
+        <label>TCPA</label>
+        {{ form.w_tcpa }} {% if form.w_tcpa.errors %}<div class="errorlist">{{ form.w_tcpa.errors }}</div>{% endif %}
+        <label>TDB</label>
+        {{ form.w_tdb }} {% if form.w_tdb.errors %}<div class="errorlist">{{ form.w_tdb.errors }}</div>{% endif %}
+        <label>TWRP</label>
+        {{ form.w_twrp }} {% if form.w_twrp.errors %}<div class="errorlist">{{ form.w_twrp.errors }}</div>{% endif %}
+      </div>
+
+      <div>
+        <h5 style="margin:8px 0;">Sigmas (optional)</h5>
+        <label>σ CPA</label>
+        {{ form.sigma_cpa }} {% if form.sigma_cpa.errors %}<div class="errorlist">{{ form.sigma_cpa.errors }}</div>{% endif %}
+        <label>σ TCPA</label>
+        {{ form.sigma_tcpa }} {% if form.sigma_tcpa.errors %}<div class="errorlist">{{ form.sigma_tcpa.errors }}</div>{% endif %}
+        <label>σ TDB</label>
+        {{ form.sigma_tdb }} {% if form.sigma_tdb.errors %}<div class="errorlist">{{ form.sigma_tdb.errors }}</div>{% endif %}
+        <label>σ TWRP</label>
+        {{ form.sigma_twrp }} {% if form.sigma_twrp.errors %}<div class="errorlist">{{ form.sigma_twrp.errors }}</div>{% endif %}
+      </div>
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="errorlist" style="margin-top:10px;">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <button class="btn btn-outline-secondary" type="submit" name="compute_now" value="1">
+        Save &amp; Compute Now
+      </button>
+      <a class="btn btn-link" href="{% url 'scenario_detail' scenario.id %}">Back</a>
+    </div>
+
+    <details style="margin-top:12px;">
+      <summary>What do these controls do?</summary>
+      <ul>
+        <li><strong>R_W_m</strong>: weapon engagement range in meters.</li>
+        <li><strong>R_DA_m</strong>: defended asset radius; should be less than R_W_m.</li>
+        <li><strong>tick_s</strong>: compute cadence; lower is finer but costlier.</li>
+        <li><strong>Weights</strong>: contribution of CPA/TCPA/TDB/TWRP to final score (must sum to 1.0).</li>
+        <li><strong>Sigmas</strong>: optional normalization scales; leave blank for defaults.</li>
+      </ul>
+    </details>
+  </form>
+</div>
+{% endblock %}
+
+<div style="display:flex; gap:8px; margin-top:14px;">
+  <button class="btn btn-primary" type="submit">Save</button>
+  <button class="btn btn-outline-secondary" type="submit" name="compute_now" value="1">
+    Save &amp; Compute Now
+  </button>
+  <a class="btn btn-link" href="{% url 'scenario_detail' scenario.id %}">Back</a>
+</div>
+
+{% if messages %}
+  <ul class="messages" style="list-style:none; padding:0; margin:10px 0 0;">
+    {% for message in messages %}
+      <li style="padding:8px 10px; border-radius:8px; background:#10141c; color:#e7e9ee; border:1px solid #22293a;">
+        {{ message }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

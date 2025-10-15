@@ -1,0 +1,28 @@
+<!-- templates/scenarios/detail.html -->
+<section class="card mt-4">
+  <div class="card-header">Score Breakdown</div>
+  <div class="card-body">
+    <form id="sb-form" class="form-inline mb-3">
+      <input class="form-control mr-2" name="scenario_id" placeholder="Scenario ID" required>
+      <input class="form-control mr-2" name="da_id" placeholder="DA ID" required>
+      <input class="form-control mr-2" name="track_id" placeholder="Track ID (e.g., T2 or ABC123)" required>
+      <button class="btn btn-primary" type="submit">Fetch</button>
+    </form>
+    <pre id="sb-output" class="bg-light p-3 mb-0" style="max-height: 380px; overflow:auto;"></pre>
+  </div>
+</section>
+
+<script>
+document.getElementById('sb-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const params = new URLSearchParams({
+    scenario_id: fd.get('scenario_id'),
+    da_id: fd.get('da_id'),
+    track_id: fd.get('track_id'),
+  });
+  const res = await fetch(`/api/tewa/score-breakdown?${params.toString()}`);
+  const body = await res.json();
+  document.getElementById('sb-output').textContent = JSON.stringify(body, null, 2);
+});
+</script>

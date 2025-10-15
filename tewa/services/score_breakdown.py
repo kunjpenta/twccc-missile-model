@@ -1,5 +1,8 @@
 # tewa/services/score_breakdown.py
-from typing import Dict
+from __future__ import annotations
+
+import math
+from typing import Any, Dict, Optional
 
 from django.utils.timezone import now
 
@@ -8,31 +11,53 @@ from tewa.services.kinematics import compute_cpa_tcpa_tdb_twrp
 from tewa.services.scoring import _coerce_params, score_components_to_threat
 
 
+def _safe_float(x: Any) -> Optional[float]:
+    if x is None:
+        return None
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+
+def _coerce_float(x: Optional[float], default: float = 0.0) -> float:
+    """Return a real float for scoring (no Nones into scorer)."""
+    return float(x) if x is not None else float(default)
+
+
+def _norm_positive(x: Optional[float], sigma: Optional[float]) -> Optional[float]:
+    if x is None or sigma is None or sigma <= 0:
+        return None
+    return math.exp(-float(x) / float(sigma))
+
+
+def _load_params_or_defaults(scenario: Scenario) -> Dict[str, float | bool]:
+    defaults: Dict[str, float | bool] = dict(
+        w_cpa=0.25, w_tcpa=0.25, w_tdb=0.25, w_twrp=0.25,
+        sigma_cpa=1.0, sigma_tcpa=1.0, sigma_tdb=1.0, sigma_twrp=1.0,
+    )
+    try:
+        mp = ModelParams.objects.filter(scenario=scenario).order_by(
+            "-updated_at", "-id").first()
+        return _coerce_params(mp) if mp else defaults  # type: ignore
+    except Exception:
+        return defaults
+
+
 def get_score_breakdown(
     scenario_id: int,
     track_id: str,
     da_id: int,
     persist: bool = True,
-    weapon_range_km: float = 10.0
+    weapon_range_km: float = 10.0,
 ) -> Dict[str, object]:
-    """
-    Compute and return the full score breakdown for a single Track × DA × Scenario.
 
-    Returns:
-        Dict with raw components, normalized values, final score, and computed timestamp.
-    """
-
-    # Fetch DB objects
     scenario = Scenario.objects.get(pk=scenario_id)
     track = Track.objects.get(scenario=scenario, track_id=track_id)
     da = DefendedAsset.objects.get(pk=da_id)
-    params = ModelParams.objects.get(scenario=scenario)
 
-    # Convert ModelParams to plain dict for type safety
-    params_dict: Dict[str, float | bool] = _coerce_params(
-        params)  # type: ignore
+    params = _load_params_or_defaults(scenario)
 
-    # Compute raw kinematic components using keyword arguments
     bundle = compute_cpa_tcpa_tdb_twrp(
         da_lat=da.lat,
         da_lon=da.lon,
@@ -44,26 +69,33 @@ def get_score_breakdown(
         weapon_range_km=weapon_range_km,
     )
 
-    cpa_km = bundle.cpa_km
-    tcpa_s = bundle.tcpa_s
-    tdb_km = bundle.tdb_s
-    twrp_s = bundle.twrp_s
+    # --- robust attribute access (some builds use tdb_s) ---
+    cpa_km = _safe_float(getattr(bundle, "cpa_km", None))
+    tcpa_s = _safe_float(getattr(bundle, "tcpa_s", None))
+    tdb_km = _safe_float(
+        getattr(bundle, "tdb_km", getattr(bundle, "tdb_s", None)))
+    twrp_s = _safe_float(getattr(bundle, "twrp_s", None))
 
-    # Compute normalized components
-    s_cpa = score_components_to_threat(
-        cpa_km, None, 0.0, 0.0, params=params_dict)
-    s_tcpa = score_components_to_threat(
-        0.0, tcpa_s, 0.0, 0.0, params=params_dict)
-    s_tdb = score_components_to_threat(
-        0.0, None, tdb_km, 0.0, params=params_dict)
-    s_twrp = score_components_to_threat(
-        0.0, None, 0.0, twrp_s, params=params_dict)
+    # Per-component normalized values (optionals are fine here)
+    n_cpa = _norm_positive(cpa_km,  _safe_float(
+        params.get("sigma_cpa")))   # type: ignore[arg-type]
+    n_tcpa = _norm_positive(tcpa_s,  _safe_float(
+        params.get("sigma_tcpa")))  # type: ignore[arg-type]
+    n_tdb = _norm_positive(tdb_km,  _safe_float(
+        params.get("sigma_tdb")))   # type: ignore[arg-type]
+    n_twrp = _norm_positive(twrp_s,  _safe_float(
+        params.get("sigma_twrp")))  # type: ignore[arg-type]
 
-    # Final weighted score
+    # --- coerce to real floats for the scorer (no Optional) ---
+    cpa_f = _coerce_float(cpa_km)
+    tcpa_f = _coerce_float(tcpa_s)
+    tdb_f = _coerce_float(tdb_km)
+    twrp_f = _coerce_float(twrp_s)
+
     final_score = score_components_to_threat(
-        cpa_km, tcpa_s, tdb_km, twrp_s, params=params_dict)
+        cpa_f, tcpa_f, tdb_f, twrp_f, params=params
+    )
 
-    # Persist if requested
     computed_at = now()
     if persist:
         ThreatScore.objects.update_or_create(
@@ -80,7 +112,6 @@ def get_score_breakdown(
             },
         )
 
-    # Return breakdown dictionary
     return {
         "scenario_id": scenario.id,
         "track_id": track.track_id,
@@ -92,10 +123,20 @@ def get_score_breakdown(
             "twrp_s": twrp_s,
         },
         "normalized": {
-            "cpa": s_cpa,
-            "tcpa": s_tcpa,
-            "tdb": s_tdb,
-            "twrp": s_twrp,
+            "cpa": n_cpa,
+            "tcpa": n_tcpa,
+            "tdb": n_tdb,
+            "twrp": n_twrp,
+        },
+        "weights": {
+            # type: ignore[arg-type]
+            "w_cpa": _safe_float(params.get("w_cpa")),
+            # type: ignore[arg-type]
+            "w_tcpa": _safe_float(params.get("w_tcpa")),
+            # type: ignore[arg-type]
+            "w_tdb": _safe_float(params.get("w_tdb")),
+            # type: ignore[arg-type]
+            "w_twrp": _safe_float(params.get("w_twrp")),
         },
         "final_score": final_score,
         "computed_at": computed_at,

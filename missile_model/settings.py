@@ -22,7 +22,7 @@ DEBUG = os.getenv("DJANGO_DEBUG", "False").strip().lower() == "true"
 ALLOWED_HOSTS = [h.strip() for h in os.getenv(
     "DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
 if DEBUG and not ALLOWED_HOSTS:
-    ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+    ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
 
 # CSRF trusted origins
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv(
@@ -53,13 +53,12 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",  # must be above CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",  # keep this one
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    'corsheaders.middleware.CorsMiddleware',  # Add this line at the top
 
 ]
 
@@ -168,19 +167,30 @@ AUTH_PASSWORD_VALIDATORS = [
 # ------------------------------
 # I18N / Time
 # ------------------------------
-LANGUAGE_CODE = "en-us"
+
+USE_I18N = False               # keep OFF for test stability
+LANGUAGE_CODE = "en"
+LANGUAGES = [("en", "English")]
+
 TIME_ZONE = os.getenv("DJANGO_TIME_ZONE", "Asia/Kolkata")
-USE_I18N = True
 USE_TZ = True
+
 
 # ------------------------------
 # Static & media
 # ------------------------------
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_DIRS = [BASE_DIR /
-                    "static"] if (BASE_DIR / "static").exists() else []
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [
+    p for p in [
+        BASE_DIR / "static",
+        BASE_DIR / "missile_model" / "static",
+    ]
+    if p.exists()
+]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 

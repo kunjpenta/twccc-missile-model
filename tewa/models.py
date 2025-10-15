@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 
 # ---------- Base ----------
@@ -223,6 +226,34 @@ class ModelParams(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
+    R_W_m = models.PositiveIntegerField(
+        default=25000, help_text="Weapon range (m)")
+    R_DA_m = models.PositiveIntegerField(
+        default=8000, help_text="DA radius (m)")
+    tick_s = models.FloatField(default=1.0, validators=[
+                               MinValueValidator(1e-6)], help_text="Tick rate (s)")
+
+    # Weights (UI enforces sum=1)
+    w_cpa = models.FloatField(default=0.35, validators=[
+                              MinValueValidator(0.0), MaxValueValidator(1.0)])
+    w_tcpa = models.FloatField(default=0.25, validators=[
+                               MinValueValidator(0.0), MaxValueValidator(1.0)])
+    w_tdb = models.FloatField(default=0.20, validators=[
+                              MinValueValidator(0.0), MaxValueValidator(1.0)])
+    w_twrp = models.FloatField(default=0.20, validators=[
+                               MinValueValidator(0.0), MaxValueValidator(1.0)])
+
+    # Optional sigmas
+    sigma_cpa = models.FloatField(null=True, blank=True)
+    sigma_tcpa = models.FloatField(null=True, blank=True)
+    sigma_tdb = models.FloatField(null=True, blank=True)
+    sigma_twrp = models.FloatField(null=True, blank=True)
+
+    # Optional audit
+    updated_by = models.ForeignKey(
+        getattr(settings, "AUTH_USER_MODEL", "auth.User"),
+        null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_params"
+    )
 
     def __str__(self):
         return f"Params for {self.scenario.name}"
@@ -230,3 +261,64 @@ class ModelParams(models.Model):
 
 # tewa/models.py (snippets)
 # tewa/models.py
+
+# imports at top of file
+
+
+class ThreatScoreQuerySet(models.QuerySet):
+    def for_key(self, *, scenario_id: int, da_id: int, track_id: int) -> "ThreatScoreQuerySet":
+        return self.filter(scenario_id=scenario_id, da_id=da_id, track_id=track_id)
+
+    def at_or_latest(self, at_iso: Optional[str] = None):
+        qs = self
+        if at_iso:
+            at_dt = parse_datetime(at_iso)
+            if at_dt:
+                qs = qs.filter(computed_at__lte=at_dt)
+        return qs.order_by("-computed_at", "-id").first()
+
+
+class ThreatScoreManager(models.Manager):
+    def get_queryset(self) -> ThreatScoreQuerySet:  # type: ignore[override]
+        return ThreatScoreQuerySet(self.model, using=self._db)
+
+    def latest_for(
+        self, *, scenario_id: int, da_id: int, track_id: int, at_iso: Optional[str] = None
+    ):
+        return (
+            self.get_queryset()
+            .for_key(scenario_id=scenario_id, da_id=da_id, track_id=track_id)
+            .at_or_latest(at_iso=at_iso)
+        )
+
+
+# tewa/models.py (inside ModelParams)
+
+# --- ranges & timing ---
+R_W_m = models.PositiveIntegerField(
+    default=25000, help_text="Weapon range (m)")
+R_DA_m = models.PositiveIntegerField(default=8000, help_text="DA radius (m)")
+tick_s = models.FloatField(default=1.0, validators=[
+                           MinValueValidator(1e-6)], help_text="Tick rate (s)")
+
+# --- weights (must sum to 1.0 at the form/API layer) ---
+w_cpa = models.FloatField(default=0.35, validators=[
+                          MinValueValidator(0.0), MaxValueValidator(1.0)])
+w_tcpa = models.FloatField(default=0.25, validators=[
+                           MinValueValidator(0.0), MaxValueValidator(1.0)])
+w_tdb = models.FloatField(default=0.20, validators=[
+                          MinValueValidator(0.0), MaxValueValidator(1.0)])
+w_twrp = models.FloatField(default=0.20, validators=[
+                           MinValueValidator(0.0), MaxValueValidator(1.0)])
+
+# --- sigmas (optional) ---
+sigma_cpa = models.FloatField(null=True, blank=True)
+sigma_tcpa = models.FloatField(null=True, blank=True)
+sigma_tdb = models.FloatField(null=True, blank=True)
+sigma_twrp = models.FloatField(null=True, blank=True)
+
+# --- audit (optional if you already have updated_at/created_at via mixin) ---
+updated_by = models.ForeignKey(
+    getattr(settings, "AUTH_USER_MODEL", "auth.User"),
+    null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_params"
+)

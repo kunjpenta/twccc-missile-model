@@ -1,14 +1,15 @@
 # tewa/services/kinematics.py
 from __future__ import annotations
-from typing import Optional as _Optional
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 import math
 from dataclasses import dataclass
 from typing import (
+    NamedTuple,
     Optional,  # if you keep the optional wrapper shown below
     Tuple,
 )
+from typing import Optional as _Optional
 
 from core.utils.geodesy import LatLon, enu_from_latlon
 from core.utils.units import deg2rad, m_to_km
@@ -185,6 +186,21 @@ def twrp_s(
     dist_to_boundary_km = d_km - weapon_range_km
     return dist_to_boundary_km / closing_kmps
 
+
+# tewa/services/kinematics.py
+
+
+class KinematicsBundle(NamedTuple):
+    cpa_km: float
+    tcpa_s: float
+    tdb_s: float
+    twrp_s: Optional[float] = None
+
+    @property
+    def tdb_km(self) -> float:
+        # Alias for consumers that expect "km"
+        return self.tdb_s
+
 # -------------------------
 # (Optional) Back-compat wrappers
 # -------------------------
@@ -225,13 +241,6 @@ def time_to_weapon_release_s(
         trk_lat=lat_t, trk_lon=lon_t,
         speed_mps=spd_mps, heading_deg=hdg_deg,
     )
-
-
-class KinematicsBundle(NamedTuple):
-    cpa_km: float
-    tcpa_s: float
-    tdb_s: float
-    twrp_s: _Optional[float]
 
 
 def compute_cpa_tcpa_tdb_twrp(
