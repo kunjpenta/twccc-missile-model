@@ -1,8 +1,9 @@
 # tewa/services/ranking.py
 
+from tewa.models import ThreatScore
 from typing import Dict, List, Optional
 
-from tewa.models import DefendedAsset, ThreatScore
+from tewa.models import DefendedAsset
 
 
 def rank_threats(
@@ -62,3 +63,16 @@ def rank_threats(
             })
 
     return threat_rankings
+
+
+# tewa/services/ranking.py
+
+
+def get_ranking_for_scenario(scenario_id):
+    return (
+        ThreatScore.objects
+        .filter(scenario_id=scenario_id)
+        .select_related("scenario", "da", "track")
+        .order_by("-score")
+        .all()
+    )

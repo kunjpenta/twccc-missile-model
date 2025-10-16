@@ -59,7 +59,7 @@ def test_score_breakdown_api_returns_latest(db):
 
     client = APIClient()
     # make sure this name exists in tewa/api/urls.py
-    url = reverse("score-breakdown")
+    url = reverse("score_breakdown")
 
     from typing import Any, Dict, cast
 

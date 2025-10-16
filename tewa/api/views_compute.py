@@ -12,12 +12,12 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tewa.api.query_schemas import RankingQuerySerializer
-from tewa.api.view_utils import bad_request, iso_utc, iso_utc_now
+from tewa.api.view_utils import iso_utc, iso_utc_now
 from tewa.models import DefendedAsset, Scenario, ThreatScore, Track
 from tewa.services.csv_import import import_csv
 from tewa.services.engine import compute_scores_at_timestamp
@@ -59,37 +59,50 @@ def _supports_batch_id() -> bool:
 
 # ------------------------------ endpoints ------------------------------
 
+
+# Optional: in-memory cache or DB check
+_idempotent_cache = {}
+
+
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def compute_now(request):
-    body = _as_mapping(getattr(request, "data", {}))
-    scenario_id_opt = _get_int(body, "scenario_id")
-    method = _get_str(body, "method") or "linear"
+    # Validate request body
+    scenario_id = request.data.get("scenario_id")
+    if not scenario_id:
+        return Response(
+            {"detail": "Missing required field 'scenario_id'"},
+            status=400
+        )
 
-    if scenario_id_opt is None:
-        return bad_request("scenario_id is required")
-    scenario_id: int = scenario_id_opt
+    key = request.data.get("idempotency_key")
 
-    # ensure plain str (some stubs mark helpers as Optional[str])
-    when_iso: str = iso_utc_now() or iso_utc(
-        timezone.now()) or timezone.now().isoformat()
+    # Idempotency cache key
+    if key:
+        cache_key = f"{scenario_id}:{key}"
+        if cache_key in _idempotent_cache:
+            return Response(_idempotent_cache[cache_key])
 
-    kwargs: Dict[str, Any] = {
-        "scenario_id": scenario_id, "when_iso": when_iso, "method": method}
-    batch_id: Optional[str] = None
-    if _supports_batch_id():
-        batch_id = str(uuid.uuid4())
-        kwargs["batch_id"] = batch_id
+    # --- actual computation ---
+    scenario = Scenario.objects.get(id=scenario_id)
+    scores = compute_scores_at_timestamp(
+        scenario_id=scenario.id, when_iso=timezone.now().isoformat())
 
-    try:
-        cast(Any, compute_scores_at_timestamp)(**kwargs)
-    except Exception as e:
-        return Response({"detail": f"Compute failed: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    data = {
+        "scenario_id": scenario.id,
+        "count": len(scores),
+        "computed_at": timezone.now().isoformat(),
+        "top3": [
+            {"track": s.track.track_id, "score": s.score}
+            for s in sorted(scores, key=lambda s: s.score, reverse=True)[:3]
+        ],
+    }
 
-    return Response(
-        {"status": "ok", "scenario_id": scenario_id, "method": method,
-            "computed_at": when_iso, "batch_id": batch_id},
-        status=200,
-    )
+    # Cache for idempotency reuse
+    if key:
+        _idempotent_cache[cache_key] = data
+
+    return Response(data)
 
 
 @api_view(["POST"])

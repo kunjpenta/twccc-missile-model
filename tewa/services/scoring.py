@@ -1,28 +1,37 @@
 # tewa/services/scoring.py
-
 from __future__ import annotations
-from tewa.services.normalize import clamp01, inv1  # ADD this import
+from decimal import ROUND_HALF_UP, Decimal
 
 import math
 from typing import Any, Mapping, Optional, Union, cast
 
+from tewa.services.normalize import clamp01, inv1
 from tewa.types import ModelParamsDict, ModelParamsIn, ParamLike
+
+# -------------------------------------------------------------------
+# Core parameter coercion & normalization utilities
+# -------------------------------------------------------------------
 
 
 def normalize(value: float, scale: float, clamp: bool = True) -> float:
+    """
+    Normalize a value against a given scale into [0, 1].
+    Example: value=10, scale=100 → 0.9.
+    If clamp=True, output is clipped to [0,1].
+    """
     if scale <= 0:
         raise ValueError("Scale must be positive")
+
     normalized = 1.0 - (value / scale)
-    if clamp:
-        normalized = max(0.0, min(1.0, normalized))
-    return normalized
+    return max(0.0, min(1.0, normalized)) if clamp else normalized
 
 
 def _coerce_params(p: Union[ParamLike, Mapping[str, Any]]) -> ModelParamsDict:
     """
-    Return a fully-populated params dict (all keys present).
-    This makes p["key"] safe for static type-checkers.
+    Coerce input parameters (dict or ORM object) into a fully populated ModelParamsDict.
+    Guarantees all expected keys and float/bool coercion for safety.
     """
+    # ORM-style object with attributes
     if not isinstance(p, Mapping) and hasattr(p, "w_cpa"):
         return {
             "w_cpa": float(p.w_cpa),
@@ -36,7 +45,8 @@ def _coerce_params(p: Union[ParamLike, Mapping[str, Any]]) -> ModelParamsDict:
             "clamp_0_1": bool(p.clamp_0_1),
         }
 
-    m = cast(ModelParamsIn, p)  # may be partial
+    # Dict-like (may be partial)
+    m = cast(ModelParamsIn, p)
     return {
         "w_cpa": float(m.get("w_cpa", 0.25)),
         "w_tcpa": float(m.get("w_tcpa", 0.25)),
@@ -51,11 +61,13 @@ def _coerce_params(p: Union[ParamLike, Mapping[str, Any]]) -> ModelParamsDict:
 
 
 def _is_bad(v: Optional[float]) -> bool:
+    """Return True if v is None, NaN, or infinite."""
     return v is None or not math.isfinite(v)
 
 
-# tewa/services/scoring.py
-
+# -------------------------------------------------------------------
+# Threat scoring kernels
+# -------------------------------------------------------------------
 
 def score_components_to_threat(
     cpa_km: float,
@@ -64,23 +76,29 @@ def score_components_to_threat(
     twrp_s: Optional[float],
     params: ParamLike,
 ) -> float:
+    """
+    Compute normalized threat score from weighted CPA, TCPA, TDB, TWRP components.
+
+    All components are inverted via inv1(scale) for consistency with the
+    compute_threat_score() pipeline. Negative TCPA/TWRP values are treated as
+    past or invalid → score 0.
+    """
     p = _coerce_params(params)
 
-    # Use inv1 everywhere for consistency with compute_threat_score()
+    # Normalized components
     s_cpa = inv1(cpa_km, p["cpa_scale_km"])
-    # negative TCPA => “past” => zero urgency; otherwise inv1
     s_tcpa = 0.0 if (tcpa_s is not None and tcpa_s <
                      0) else inv1(tcpa_s, p["tcpa_scale_s"])
     s_tdb = inv1(tdb_km, p["tdb_scale_km"])
-    # None/neg/inf handled by inv1; we keep explicit neg check to force 0
     s_twrp = 0.0 if (twrp_s is not None and twrp_s <
                      0) else inv1(twrp_s, p["twrp_scale_s"])
 
+    # Weighted sum
     score = (
-        p["w_cpa"] * s_cpa +
-        p["w_tcpa"] * s_tcpa +
-        p["w_tdb"] * s_tdb +
-        p["w_twrp"] * s_twrp
+        p["w_cpa"] * s_cpa
+        + p["w_tcpa"] * s_tcpa
+        + p["w_tdb"] * s_tdb
+        + p["w_twrp"] * s_twrp
     )
 
     return clamp01(score) if p["clamp_0_1"] else float(score)
@@ -93,6 +111,10 @@ def combine_score(
     tdb_s: Optional[float],
     twrp_s: Optional[float],
 ) -> float:
+    """
+    Legacy/simple combination of normalized scores using static weights.
+    Used for quick sanity checks or visualization, not full TEWA computation.
+    """
     weights = {"cpa": 0.4, "tcpa": 0.3, "tdb": 0.2, "twrp": 0.1}
 
     cpa_n = normalize(max(0.0, cpa_km), 100.0, clamp=True)
@@ -109,8 +131,20 @@ def combine_score(
         + weights["tdb"] * tdb_n
         + weights["twrp"] * twrp_n
     )
+
     return max(0.0, min(1.0, final_score))
 
 
-__all__ = ["score_components_to_threat",
-           "combine_score", "normalize", "_coerce_params"]
+__all__ = [
+    "normalize",
+    "_coerce_params",
+    "_is_bad",
+    "score_components_to_threat",
+    "combine_score",
+]
+
+# tewa/services/scoring.py
+
+
+def _round6(val):
+    return float(Decimal(str(val)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP))

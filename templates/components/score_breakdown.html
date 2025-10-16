@@ -110,7 +110,7 @@
         da_id: daId,
       });
       if (at) p.set("at", at);
-      const url = `/api/tewa/score-breakdown?${p.toString()}`;
+      const url = `/api/tewa/score_breakdown?${p.toString()}`;
 
       fetch(url)
         .then((r) =>

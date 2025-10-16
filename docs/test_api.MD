@@ -136,7 +136,7 @@ curl -sG "http://127.0.0.1:8000/api/tewa/ranking/" \
 
 Returns the **latest** `ThreatScore` either for a specific track vs DA, or all latest scores for a DA across tracks.
 
-**GET** `/score-breakdown` _(no trailing slash)_
+**GET** `/score_breakdown` _(no trailing slash)_
 
 **Use 1 — Single track vs DA**
 
@@ -145,7 +145,7 @@ Returns the **latest** `ThreatScore` either for a specific track vs DA, or all l
 **Example**
 
 ```bash
-curl -sG "http://127.0.0.1:8000/api/tewa/score-breakdown" \
+curl -sG "http://127.0.0.1:8000/api/tewa/score_breakdown" \
   --data-urlencode "scenario_id=1" \
   --data-urlencode "da_id=3" \
   --data-urlencode "track_id=T2"
@@ -159,7 +159,7 @@ curl -sG "http://127.0.0.1:8000/api/tewa/score-breakdown" \
 **Example**
 
 ```bash
-curl -sG "http://127.0.0.1:8000/api/tewa/score-breakdown" \
+curl -sG "http://127.0.0.1:8000/api/tewa/score_breakdown" \
   --data-urlencode "scenario_id=1" \
   --data-urlencode "da_id=3"
 ```
@@ -219,7 +219,7 @@ Triggers a batch recalculation (implementation-specific).
 
 ## 4) Notes on identifiers
 
-- **`track_id` (string)** in read/lookup endpoints like `score-breakdown` (single-track mode) and `tracks/detail/` refers to the **public** track identifier (e.g., `"T2"`, `"ABC123"`).
+- **`track_id` (string)** in read/lookup endpoints like `score_breakdown` (single-track mode) and `tracks/detail/` refers to the **public** track identifier (e.g., `"T2"`, `"ABC123"`).
 - **Track/DA IDs (integers)** in compute POST endpoints (`compute_now`, `compute_at`, `calculate_scores`) refer to the **database primary keys** when sent inside nested objects; otherwise you pass `scenario_id` as plain int.
 
 ---
@@ -242,13 +242,13 @@ curl -s http://127.0.0.1:8000/api/tewa/
 curl -s http://127.0.0.1:8000/api/tewa/threatscore/
 
 # Latest score for (scenario=1, DA=3, track=T2)
-curl -sG "http://127.0.0.1:8000/api/tewa/score-breakdown" \
+curl -sG "http://127.0.0.1:8000/api/tewa/score_breakdown" \
   --data-urlencode "scenario_id=1" \
   --data-urlencode "da_id=3" \
   --data-urlencode "track_id=T2"
 
 # All latest scores for DA=3 in scenario=1
-curl -sG "http://127.0.0.1:8000/api/tewa/score-breakdown" \
+curl -sG "http://127.0.0.1:8000/api/tewa/score_breakdown" \
   --data-urlencode "scenario_id=1" \
   --data-urlencode "da_id=3"
 
@@ -283,7 +283,7 @@ curl -s -X POST http://127.0.0.1:8000/api/tewa/compute_at \
 | POST   | `/compute_now/`      | Compute scores using current data              |
 | POST   | `/compute_at`        | Compute scores at a specific timestamp         |
 | GET    | `/ranking/`          | Top N threats per DA (requires `scenario_id`)  |
-| GET    | `/score-breakdown`   | Latest score(s): by DA (+ optional `track_id`) |
+| GET    | `/score_breakdown`   | Latest score(s): by DA (+ optional `track_id`) |
 | GET    | `/tracks/detail/`    | Track details by public `track_id` + scores    |
 | POST   | `/upload_tracks/`    | Upload track data file                         |
 | POST   | `/calculate_scores/` | Batch recalculation helper                     |

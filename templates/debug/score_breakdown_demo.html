@@ -1,262 +1,520 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Score Breakdown — Debug</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root{
-      --bg:#0f1115; --panel:#151922; --text:#e7e9ee; --muted:#9aa3b2; --accent:#4da3ff;
-      --ok:#34d399; --warn:#f59e0b; --bad:#ef4444; --border:#232936;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji"}
-    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.25);padding:16px}
-    h1{font-size:20px;margin:0 0 8px}
-    .muted{color:var(--muted)}
-    .row{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
-    .row .col{display:flex;flex-direction:column}
-    label{font-size:12px;color:var(--muted);margin-bottom:6px}
-    input{height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:#0d1016;color:var(--text);outline:none}
-    input:focus{border-color:var(--accent)}
-    .actions{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
-    button{height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#0b1020;font-weight:600;cursor:pointer}
-    button.ghost{background:transparent;color:var(--accent)}
-    .table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:12px;border:1px solid var(--border);background:#0f1420}
-    .table th,.table td{padding:10px 12px;border-bottom:1px solid var(--border)}
-    .table th{text-align:left;font-weight:600;color:var(--muted)}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;background:#0e1320;border:1px solid var(--border)}
-    .hero{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:8px 0 12px;flex-wrap:wrap}
-    .badge{font-weight:700;letter-spacing:.2px}
-    .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px;color:#c9d1d9}
-    .split{display:grid;gap:16px;grid-template-columns:1fr 1fr}
-    .bars{display:grid;gap:10px;grid-template-columns:repeat(2,1fr)}
-    .bar,.compbar{height:10px;border-radius:999px;background:#0c111c;border:1px solid var(--border);overflow:hidden}
-    .fill,.compbar>div{height:100%;width:0%;transition:width .3s ease;background:var(--accent)}
-    .hr{height:1px;background:var(--border);margin:12px 0}
-    .footnote{font-size:12px;color:var(--muted)}
-    .score-good{background:#10341f;border-color:#1f6c3b;color:#a7f3d0}
-    .score-warn{background:#3a2b0d;border-color:#6c4a1f;color:#fde68a}
-    .score-bad{background:#3b0f12;border-color:#7f1d1d;color:#fecaca}
-    .status-err{color:#ff7a7a}
-    @media (max-width:900px){.row{grid-template-columns:1fr 1fr}.split{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Score Breakdown <span class="muted">— debug UI</span></h1>
+  <head>
+    <meta charset="utf-8" />
+    <title>Score Breakdown — Debug</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #151922;
+        --text: #e7e9ee;
+        --muted: #9aa3b2;
+        --accent: #4da3ff;
+        --ok: #34d399;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+        --border: #232936;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+          "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+          "Segoe UI Emoji";
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+        padding: 16px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .row {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .row .col {
+        display: flex;
+        flex-direction: column;
+      }
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      input {
+        height: 38px;
+        padding: 0 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #0d1016;
+        color: var(--text);
+        outline: none;
+      }
+      input:focus {
+        border-color: var(--accent);
+      }
+      .actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      button {
+        height: 38px;
+        padding: 0 14px;
+        border-radius: 10px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #0b1020;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.ghost {
+        background: transparent;
+        color: var(--accent);
+      }
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #0f1420;
+      }
+      .table th,
+      .table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .table th {
+        text-align: left;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: #0e1320;
+        border: 1px solid var(--border);
+      }
+      .hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 8px 0 12px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+          "Liberation Mono", monospace;
+        font-size: 12px;
+        color: #c9d1d9;
+      }
+      .split {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 1fr 1fr;
+      }
+      .bars {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .bar,
+      .compbar {
+        height: 10px;
+        border-radius: 999px;
+        background: #0c111c;
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .fill,
+      .compbar > div {
+        height: 100%;
+        width: 0%;
+        transition: width 0.3s ease;
+        background: var(--accent);
+      }
+      .hr {
+        height: 1px;
+        background: var(--border);
+        margin: 12px 0;
+      }
+      .footnote {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .score-good {
+        background: #10341f;
+        border-color: #1f6c3b;
+        color: #a7f3d0;
+      }
+      .score-warn {
+        background: #3a2b0d;
+        border-color: #6c4a1f;
+        color: #fde68a;
+      }
+      .score-bad {
+        background: #3b0f12;
+        border-color: #7f1d1d;
+        color: #fecaca;
+      }
+      .status-err {
+        color: #ff7a7a;
+      }
+      @media (max-width: 900px) {
+        .row {
+          grid-template-columns: 1fr 1fr;
+        }
+        .split {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Score Breakdown <span class="muted">— debug UI</span></h1>
 
-      <div class="row" role="group" aria-label="Query Inputs">
-        <div class="col">
-          <label for="scenario">Scenario ID</label>
-          <input id="scenario" placeholder="e.g. 1" value="1" />
-        </div>
-        <div class="col">
-          <label for="track">Track ID (PK or public)</label>
-          <input id="track" placeholder="e.g. 3 or T3" value="3" />
-        </div>
-        <div class="col">
-          <label for="da">DA ID</label>
-          <input id="da" placeholder="e.g. 2" value="2" />
-        </div>
-        <div class="col">
-          <label for="at">at (ISO-8601 UTC, optional)</label>
-          <input id="at" placeholder="2025-10-15T05:42:50Z" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button id="btnLoad">Load breakdown</button>
-        <button class="ghost" id="btnClear">Clear</button>
-        <button class="ghost" id="btnLink">Copy link</button>
-        <button class="ghost" id="btnJson">Copy JSON</button>
-        <span id="status" class="muted" aria-live="polite"></span>
-      </div>
-
-      <div class="hr"></div>
-
-      <div id="panel" style="display:none">
-        <div class="hero">
-          <div>
-            <span id="score-chip" class="pill">score: <span id="o-score"></span></span>
-            <span class="pill">total_score: <span id="o-score2"></span></span>
+        <div class="row" role="group" aria-label="Query Inputs">
+          <div class="col">
+            <label for="scenario">Scenario ID</label>
+            <input id="scenario" placeholder="e.g. 1" value="1" />
           </div>
-          <div>
-            <div class="badge">
-              Scenario <span id="o-s"></span> • Track <span id="o-t"></span> • DA <span id="o-d"></span>
-            </div>
-            <div class="muted">computed_at: <span id="o-time" class="code"></span></div>
+          <div class="col">
+            <label for="track">Track ID (PK or public)</label>
+            <input id="track" placeholder="e.g. 3 or T3" value="3" />
+          </div>
+          <div class="col">
+            <label for="da">DA ID</label>
+            <input id="da" placeholder="e.g. 2" value="2" />
+          </div>
+          <div class="col">
+            <label for="at">at (ISO-8601 UTC, optional)</label>
+            <input id="at" placeholder="2025-10-15T05:42:50Z" />
           </div>
         </div>
 
-        <div class="split">
-          <section aria-labelledby="hdr-metrics">
-            <h3 id="hdr-metrics" class="muted" style="margin:0 0 6px">Raw Metrics</h3>
-            <table class="table">
-              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-              <tbody>
-                <tr><td>CPA</td><td><span id="m-cpa-m"></span> m <span class="muted">(= <span id="m-cpa-km"></span> km)</span></td></tr>
-                <tr><td>TCPA</td><td><span id="m-tcpa-s"></span> s</td></tr>
-                <tr><td>TDB</td><td><span id="m-tdb-s"></span> s <span class="muted">(≈ <span id="m-tdb-km"></span> km)</span></td></tr>
-                <tr><td>TWRP</td><td><span id="m-twrp-s"></span> s</td></tr>
-              </tbody>
-            </table>
-          </section>
-
-          <section aria-labelledby="hdr-nwc">
-            <h3 id="hdr-nwc" class="muted" style="margin:0 0 6px">Normalized • Weights • Contributions</h3>
-            <table class="table" aria-describedby="hint-fallback">
-              <thead><tr><th>Comp</th><th>Norm</th><th>Weight</th><th>Contr.</th></tr></thead>
-              <tbody id="tbl-nwc"></tbody>
-            </table>
-
-            <!-- component mini-bars -->
-            <div id="compbars" class="row" style="grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:8px"></div>
-
-            <div class="bars" style="margin-top:8px">
-              <div>
-                <div class="muted">Total score</div>
-                <div class="bar"><div id="bar-score" class="fill"></div></div>
-              </div>
-              <div>
-                <div class="muted">Contribution sum</div>
-                <div class="bar"><div id="bar-sum" class="fill"></div></div>
-              </div>
-            </div>
-          </section>
+        <div class="actions">
+          <button id="btnLoad">Load breakdown</button>
+          <button class="ghost" id="btnClear">Clear</button>
+          <button class="ghost" id="btnLink">Copy link</button>
+          <button class="ghost" id="btnJson">Copy JSON</button>
+          <span id="status" class="muted" aria-live="polite"></span>
         </div>
 
         <div class="hr"></div>
-        <section>
-          <h3 class="muted" style="margin:0 0 6px">Explain</h3>
-          <ul id="explain" style="margin:0 0 6px 16px"></ul>
-          <div id="hint-fallback" class="footnote">
-            Tip: if normalized/weights are all zeros, you’re viewing the <span class="code">ThreatScore</span> fallback (no compute-path breakdown).
+
+        <div id="panel" style="display: none">
+          <div class="hero">
+            <div>
+              <span id="score-chip" class="pill"
+                >score: <span id="o-score"></span
+              ></span>
+              <span class="pill">total_score: <span id="o-score2"></span></span>
+            </div>
+            <div>
+              <div class="badge">
+                Scenario <span id="o-s"></span> • Track <span id="o-t"></span> •
+                DA <span id="o-d"></span>
+              </div>
+              <div class="muted">
+                computed_at: <span id="o-time" class="code"></span>
+              </div>
+            </div>
           </div>
-        </section>
+
+          <div class="split">
+            <section aria-labelledby="hdr-metrics">
+              <h3 id="hdr-metrics" class="muted" style="margin: 0 0 6px">
+                Raw Metrics
+              </h3>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>CPA</td>
+                    <td>
+                      <span id="m-cpa-m"></span> m
+                      <span class="muted"
+                        >(= <span id="m-cpa-km"></span> km)</span
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>TCPA</td>
+                    <td><span id="m-tcpa-s"></span> s</td>
+                  </tr>
+                  <tr>
+                    <td>TDB</td>
+                    <td>
+                      <span id="m-tdb-s"></span> s
+                      <span class="muted"
+                        >(≈ <span id="m-tdb-km"></span> km)</span
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>TWRP</td>
+                    <td><span id="m-twrp-s"></span> s</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section aria-labelledby="hdr-nwc">
+              <h3 id="hdr-nwc" class="muted" style="margin: 0 0 6px">
+                Normalized • Weights • Contributions
+              </h3>
+              <table class="table" aria-describedby="hint-fallback">
+                <thead>
+                  <tr>
+                    <th>Comp</th>
+                    <th>Norm</th>
+                    <th>Weight</th>
+                    <th>Contr.</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-nwc"></tbody>
+              </table>
+
+              <!-- component mini-bars -->
+              <div
+                id="compbars"
+                class="row"
+                style="
+                  grid-template-columns: repeat(2, minmax(0, 1fr));
+                  margin-top: 8px;
+                "
+              ></div>
+
+              <div class="bars" style="margin-top: 8px">
+                <div>
+                  <div class="muted">Total score</div>
+                  <div class="bar"><div id="bar-score" class="fill"></div></div>
+                </div>
+                <div>
+                  <div class="muted">Contribution sum</div>
+                  <div class="bar"><div id="bar-sum" class="fill"></div></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="hr"></div>
+          <section>
+            <h3 class="muted" style="margin: 0 0 6px">Explain</h3>
+            <ul id="explain" style="margin: 0 0 6px 16px"></ul>
+            <div id="hint-fallback" class="footnote">
+              Tip: if normalized/weights are all zeros, you’re viewing the
+              <span class="code">ThreatScore</span> fallback (no compute-path
+              breakdown).
+            </div>
+          </section>
+        </div>
       </div>
     </div>
-  </div>
 
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const fmt = (v, d=3) => (Number.isFinite(+v) ? Number(v).toFixed(d) : "—");
-    const setW = (el, v) => { el.style.width = (Math.max(0, Math.min(1, v))*100) + "%"; };
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const fmt = (v, d = 3) =>
+        Number.isFinite(+v) ? Number(v).toFixed(d) : "—";
+      const setW = (el, v) => {
+        el.style.width = Math.max(0, Math.min(1, v)) * 100 + "%";
+      };
 
-    let lastResponse = null;
+      let lastResponse = null;
 
-    function buildLink() {
-      const s = $("scenario").value.trim(), t = $("track").value.trim(), d = $("da").value.trim(), at = $("at").value.trim();
-      const p = new URLSearchParams({scenario_id:s, track_id:t, da_id:d}); if (at) p.set("at", at);
-      return `${location.origin}/api/tewa/score-breakdown?${p}`;
-    }
+      function buildLink() {
+        const s = $("scenario").value.trim(),
+          t = $("track").value.trim(),
+          d = $("da").value.trim(),
+          at = $("at").value.trim();
+        const p = new URLSearchParams({
+          scenario_id: s,
+          track_id: t,
+          da_id: d,
+        });
+        if (at) p.set("at", at);
+        return `${location.origin}/api/tewa/score_breakdown?${p}`;
+      }
 
-    async function copy(text) {
-      try { await navigator.clipboard.writeText(text); $("status").textContent = "Copied ✅"; }
-      catch { $("status").textContent = "Copy failed"; }
-    }
+      async function copy(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          $("status").textContent = "Copied ✅";
+        } catch {
+          $("status").textContent = "Copy failed";
+        }
+      }
 
-    function colorScoreChip(score) {
-      const sc = $("score-chip");
-      sc.classList.remove("score-good","score-warn","score-bad");
-      if (score >= 0.66) sc.classList.add("score-good");
-      else if (score >= 0.33) sc.classList.add("score-warn");
-      else sc.classList.add("score-bad");
-    }
+      function colorScoreChip(score) {
+        const sc = $("score-chip");
+        sc.classList.remove("score-good", "score-warn", "score-bad");
+        if (score >= 0.66) sc.classList.add("score-good");
+        else if (score >= 0.33) sc.classList.add("score-warn");
+        else sc.classList.add("score-bad");
+      }
 
-    function load() {
-      const s = $("scenario").value.trim(), t = $("track").value.trim(), d = $("da").value.trim(), at = $("at").value.trim();
-      if (!s || !t || !d) { $("status").textContent = "Please fill scenario_id, track_id, da_id."; return; }
-      $("status").textContent = "Loading…";
-      const params = new URLSearchParams({scenario_id:s, track_id:t, da_id:d}); if (at) params.set("at", at);
+      function load() {
+        const s = $("scenario").value.trim(),
+          t = $("track").value.trim(),
+          d = $("da").value.trim(),
+          at = $("at").value.trim();
+        if (!s || !t || !d) {
+          $("status").textContent = "Please fill scenario_id, track_id, da_id.";
+          return;
+        }
+        $("status").textContent = "Loading…";
+        const params = new URLSearchParams({
+          scenario_id: s,
+          track_id: t,
+          da_id: d,
+        });
+        if (at) params.set("at", at);
 
-      fetch(`/api/tewa/score-breakdown?${params}`)
-        .then(r => r.json().then(j => ({ok:r.ok, status:r.status, body:j})))
-        .then(({ok, status, body}) => {
-          if (!ok) {
-            $("panel").style.display = "none";
-            $("status").textContent = (body && body.detail) ? body.detail : `Error ${status}`;
-            $("status").classList.add("status-err");
-            return;
-          }
-          $("status").classList.remove("status-err");
-          $("status").textContent = "";
-          lastResponse = body;
+        fetch(`/api/tewa/score_breakdown?${params}`)
+          .then((r) =>
+            r.json().then((j) => ({ ok: r.ok, status: r.status, body: j }))
+          )
+          .then(({ ok, status, body }) => {
+            if (!ok) {
+              $("panel").style.display = "none";
+              $("status").textContent =
+                body && body.detail ? body.detail : `Error ${status}`;
+              $("status").classList.add("status-err");
+              return;
+            }
+            $("status").classList.remove("status-err");
+            $("status").textContent = "";
+            lastResponse = body;
 
-          // meta
-          $("panel").style.display = "block";
-          $("o-s").textContent = body.scenario_id;
-          $("o-t").textContent = body.track_id;
-          $("o-d").textContent = body.da_id;
-          $("o-time").textContent = body.computed_at || "";
+            // meta
+            $("panel").style.display = "block";
+            $("o-s").textContent = body.scenario_id;
+            $("o-t").textContent = body.track_id;
+            $("o-d").textContent = body.da_id;
+            $("o-time").textContent = body.computed_at || "";
 
-          // metrics
-          const m = body.metrics || {};
-          const cpa_km = (body.cpa_km != null) ? body.cpa_km : (m.cpa_m || 0)/1000;
-          $("m-cpa-m").textContent = fmt(m.cpa_m,2);
-          $("m-cpa-km").textContent = fmt(cpa_km,3);
-          $("m-tcpa-s").textContent = fmt(body.tcpa_s ?? m.tcpa_s,2);
-          $("m-tdb-s").textContent = fmt(m.tdb_s,2);
-          $("m-tdb-km").textContent = fmt(body.tdb_km ?? 0,3);
-          $("m-twrp-s").textContent = fmt(body.twrp_s ?? m.twrp_s,2);
+            // metrics
+            const m = body.metrics || {};
+            const cpa_km =
+              body.cpa_km != null ? body.cpa_km : (m.cpa_m || 0) / 1000;
+            $("m-cpa-m").textContent = fmt(m.cpa_m, 2);
+            $("m-cpa-km").textContent = fmt(cpa_km, 3);
+            $("m-tcpa-s").textContent = fmt(body.tcpa_s ?? m.tcpa_s, 2);
+            $("m-tdb-s").textContent = fmt(m.tdb_s, 2);
+            $("m-tdb-km").textContent = fmt(body.tdb_km ?? 0, 3);
+            $("m-twrp-s").textContent = fmt(body.twrp_s ?? m.twrp_s, 2);
 
-          // N/W/C table + component mini-bars
-          const comps = ["cpa","tcpa","tdb","twrp"];
-          const tbl = $("tbl-nwc"); tbl.innerHTML = "";
-          const compbars = $("compbars"); compbars.innerHTML = "";
-          let sum = 0;
-          comps.forEach(k => {
-            const n = body.normalized?.[k] ?? 0;
-            const w = body.weights?.[k] ?? 0;
-            const c = body.contributions?.[k] ?? 0;
-            sum += c;
+            // N/W/C table + component mini-bars
+            const comps = ["cpa", "tcpa", "tdb", "twrp"];
+            const tbl = $("tbl-nwc");
+            tbl.innerHTML = "";
+            const compbars = $("compbars");
+            compbars.innerHTML = "";
+            let sum = 0;
+            comps.forEach((k) => {
+              const n = body.normalized?.[k] ?? 0;
+              const w = body.weights?.[k] ?? 0;
+              const c = body.contributions?.[k] ?? 0;
+              sum += c;
 
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${k.toUpperCase()}</td><td>${fmt(n)}</td><td>${fmt(w)}</td><td>${fmt(c)}</td>`;
-            tbl.appendChild(tr);
+              const tr = document.createElement("tr");
+              tr.innerHTML = `<td>${k.toUpperCase()}</td><td>${fmt(
+                n
+              )}</td><td>${fmt(w)}</td><td>${fmt(c)}</td>`;
+              tbl.appendChild(tr);
 
-            const wrap = document.createElement("div");
-            wrap.innerHTML = `
+              const wrap = document.createElement("div");
+              wrap.innerHTML = `
               <div class="muted" style="display:flex;justify-content:space-between">
                 <span>${k.toUpperCase()}</span>
-                <span>${fmt(c)} <span class="muted">= ${fmt(n)}×${fmt(w)}</span></span>
+                <span>${fmt(c)} <span class="muted">= ${fmt(n)}×${fmt(
+                w
+              )}</span></span>
               </div>
-              <div class="compbar"><div style="width:${Math.max(0,Math.min(1,c))*100}%"></div></div>`;
-            compbars.appendChild(wrap);
+              <div class="compbar"><div style="width:${
+                Math.max(0, Math.min(1, c)) * 100
+              }%"></div></div>`;
+              compbars.appendChild(wrap);
+            });
+
+            // scores + bars
+            const score = body.score ?? 0;
+            const total = body.total_score ?? score;
+            $("o-score").textContent = fmt(score, 3);
+            $("o-score2").textContent = fmt(total, 3);
+            colorScoreChip(score);
+            setW($("bar-score"), Math.max(0, Math.min(1, score)));
+            setW($("bar-sum"), Math.max(0, Math.min(1, sum)));
+
+            // explain
+            const ex = $("explain");
+            ex.innerHTML = "";
+            (body.explain || []).forEach((line) => {
+              const li = document.createElement("li");
+              li.textContent = line;
+              ex.appendChild(li);
+            });
+          })
+          .catch((err) => {
+            $("status").textContent = err?.message || "Network error";
+            $("status").classList.add("status-err");
+            $("panel").style.display = "none";
           });
+      }
 
-          // scores + bars
-          const score = body.score ?? 0;
-          const total = body.total_score ?? score;
-          $("o-score").textContent = fmt(score,3);
-          $("o-score2").textContent = fmt(total,3);
-          colorScoreChip(score);
-          setW($("bar-score"), Math.max(0,Math.min(1,score)));
-          setW($("bar-sum"), Math.max(0,Math.min(1,sum)));
+      $("btnLoad").addEventListener("click", load);
+      $("btnClear").addEventListener("click", () => {
+        $("status").textContent = "";
+        $("status").classList.remove("status-err");
+        $("panel").style.display = "none";
+      });
+      $("btnJson").addEventListener("click", () => {
+        if (!lastResponse) {
+          $("status").textContent = "Load a breakdown first.";
+          return;
+        }
+        copy(JSON.stringify(lastResponse, null, 2));
+      });
+      $("btnLink").addEventListener("click", () => copy(buildLink()));
 
-          // explain
-          const ex = $("explain"); ex.innerHTML = "";
-          (body.explain || []).forEach(line => {
-            const li = document.createElement("li"); li.textContent = line; ex.appendChild(li);
-          });
-        })
-        .catch(err => {
-          $("status").textContent = err?.message || "Network error";
-          $("status").classList.add("status-err");
-          $("panel").style.display = "none";
-        });
-    }
-
-    $("btnLoad").addEventListener("click", load);
-    $("btnClear").addEventListener("click", ()=>{ $("status").textContent=""; $("status").classList.remove("status-err"); $("panel").style.display="none"; });
-    $("btnJson").addEventListener("click", ()=>{ if (!lastResponse) { $("status").textContent="Load a breakdown first."; return; } copy(JSON.stringify(lastResponse,null,2)); });
-    $("btnLink").addEventListener("click", ()=> copy(buildLink()));
-
-    // // Uncomment to auto-load with defaults:
-    // load();
-  </script>
-</body>
+      // // Uncomment to auto-load with defaults:
+      // load();
+    </script>
+  </body>
 </html>

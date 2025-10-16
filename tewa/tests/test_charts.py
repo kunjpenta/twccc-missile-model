@@ -2,26 +2,48 @@
 from django.urls import reverse
 
 
+def _body(resp):
+    """Return response body for both regular and streaming responses."""
+    content = getattr(resp, "content", None)
+    if content is None and hasattr(resp, "streaming_content"):
+        content = b"".join(resp.streaming_content)
+    return content or b""
+
+
 def test_score_history_png_ok(client, db, seeded_scenario_with_scores):
-    # Pick a known scenario/da/track from your seeding; adjust track_id if needed
+    s = seeded_scenario_with_scores
     url = reverse("score_history_png")
-    resp = client.get(url, {"scenario_id": 1, "da_id": 1,
-                      "track_id": "T1", "width": 640, "height": 240, "smooth": 3})
-    # If your seed uses numeric track PKs instead of "T1", try "1" or "3"
-    if resp.status_code == 404:
-        resp = client.get(url, {"scenario_id": 1, "da_id": 1, "track_id": 1})
+    resp = client.get(url, {
+        "scenario_id": s["scenario"].id,
+        "da_id": s["da"].id,
+        # The view filters ThreatScore by FK id; pass the Track PK (as int or str)
+        "track_id": s["track"].id,
+        "width": 640,
+        "height": 240,
+        "smooth": 3,
+    })
     assert resp.status_code == 200
     assert resp["Content-Type"] == "image/png"
-    body = b"".join(resp)  # streaming-safe
-    assert len(body) > 500  # non-trivial PNG size
+    data = _body(resp)
+    assert len(data) > 800  # non-trivial PNG size
+    assert "Cache-Control" in resp
+    assert "Last-Modified" in resp
 
 
 def test_score_history_png_missing_params(client):
     url = reverse("score_history_png")
-    assert client.get(url).status_code == 400
+    # No query params → 400
+    resp = client.get(url)
+    assert resp.status_code == 400
 
 
-def test_score_history_png_not_found(client, db):
+def test_score_history_png_not_found_wrong_track(client, db, seeded_scenario_with_scores):
+    s = seeded_scenario_with_scores
     url = reverse("score_history_png")
-    assert client.get(url, {"scenario_id": 999, "da_id": 1,
-                      "track_id": "X"}).status_code in (400, 404)
+    # Correct scenario/DA, nonexistent track → 404 (or 400 depending on your view)
+    resp = client.get(url, {
+        "scenario_id": s["scenario"].id,
+        "da_id": s["da"].id,
+        "track_id": 999999,
+    })
+    assert resp.status_code in (404, 400)

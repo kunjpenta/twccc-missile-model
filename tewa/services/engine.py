@@ -1,5 +1,4 @@
 # tewa/services/engine.py
-
 from __future__ import annotations
 
 from datetime import timezone as dt_timezone
@@ -8,18 +7,29 @@ from typing import Iterable, List, Optional, cast
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from tewa.models import DefendedAsset, ModelParams, Scenario, ThreatScore, Track
-from tewa.services.threat_compute import calculate_scores_for_when
+from tewa.models import (
+    DefendedAsset,
+    ModelParams,
+    Scenario,
+    ThreatScore,
+    Track,
+    TrackSample,
+)
+from tewa.services.sampling import sample_track_state_at
+from tewa.services.threat_compute import (
+    calculate_scores_for_when,
+    compute_score_for_track,
+)
 from tewa.types import ParamsLike
 
-from .sampling import sample_track_state_at
-from .threat_compute import compute_score_for_state
-
-# extend if you add more in sampling/compute
+# ------------------------
+# internal constants & utils
+# ------------------------
 _VALID_METHODS = {"linear", "latest"}
 
 
 def _parse_when_utc(when_iso: str):
+    """Convert ISO timestamp → timezone-aware UTC datetime."""
     when = parse_datetime(when_iso)
     if when is None:
         raise ValueError(f"Invalid timestamp: {when_iso}")
@@ -30,6 +40,9 @@ def _parse_when_utc(when_iso: str):
     return when
 
 
+# ------------------------
+# main TEWA compute path
+# ------------------------
 def compute_scores_at_timestamp(
     *,
     scenario_id: int,
@@ -41,13 +54,12 @@ def compute_scores_at_timestamp(
     """
     Compute threat scores for all (Track, DA) pairs at a given timestamp.
 
-    - If da_ids is None  -> compute for ALL DAs.
-    - If da_ids is []    -> compute for NO DAs (explicit empty).
-    - If da_ids is [..]  -> compute only for those DAs.
+    - If da_ids is None → compute for all DAs.
+    - If da_ids is []   → return empty.
+    - If da_ids is [..] → compute only for selected DAs.
 
-    Returns the list of ThreatScore rows produced (as returned by compute_score_for_state).
+    Returns: list[ThreatScore]
     """
-    # Validate/normalize inputs
     when = _parse_when_utc(when_iso)
 
     if method not in _VALID_METHODS:
@@ -59,62 +71,49 @@ def compute_scores_at_timestamp(
     except Scenario.DoesNotExist as e:
         raise ValueError(f"Scenario {scenario_id} not found") from e
 
-    # Get or create params once
     params, _ = ModelParams.objects.get_or_create(scenario=scenario)
 
-    # Resolve DAs:
-    # - None  => all DAs
-    # - []    => none (short-circuit)
-    # - [...] => filter by ids
-    das: List[DefendedAsset]
+    # Resolve DAs
     if da_ids is None:
         das = list(DefendedAsset.objects.all())
     else:
         ids = list(da_ids)
-        if not ids:  # explicit empty -> nothing to do
+        if not ids:
             return []
         das = list(DefendedAsset.objects.filter(id__in=ids))
 
     if not das:
-        return []  # nothing to compute
+        return []
 
-    # Fetch tracks for this scenario
     tracks_qs = (
         Track.objects
         .filter(scenario=scenario)
-        .select_related("scenario")
-        .only("id", "track_id", "scenario_id", "lat", "lon", "alt_m", "speed_mps", "heading_deg")
+        .only("id", "track_id", "lat", "lon", "alt_m", "speed_mps", "heading_deg")
     )
 
-    out: List[ThreatScore] = []
+    results: List[ThreatScore] = []
 
-    # Iterate tracks; sample state once per (track, when); compute per DA
-    for track in tracks_qs:
+    for track in tracks_qs.iterator():
         state = sample_track_state_at(track, when, method=method)
         if not state:
             continue
 
-        # Note: compute_score_for_state is assumed to persist each ThreatScore row
-        # (as in your current codebase) and return the created instance.
         for da in das:
-            ts = compute_score_for_state(
+            ts = compute_score_for_track(
                 scenario=scenario,
                 da=da,
                 track=track,
-                # Django model → satisfy Protocol
-                lat=state.lat,
                 params=cast(ParamsLike, params),
-                lon=state.lon,
-                speed_mps=state.speed_mps,
-                heading_deg=state.heading_deg,
-                weapon_range_km=weapon_range_km,
+                weapon_range_km=weapon_range_km or da.radius_km,
             )
-            if ts is not None:
-                out.append(ts)
+            results.append(ts)
 
-    return out
+    return results
 
 
+# ------------------------
+# lightweight simulation (no DB writes)
+# ------------------------
 def run_scenario_engine(
     scenario: Scenario,
     when,
@@ -123,8 +122,8 @@ def run_scenario_engine(
     weapon_range_km: float = 20.0,
 ):
     """
-    Convenience wrapper that uses the pure compute function (no persistence),
-    useful for simulations/what-if runs.
+    Simulation mode — computes threat scores without persisting them.
+    Useful for analytics, playback, or visualization layers.
     """
     if method not in _VALID_METHODS:
         raise ValueError(
@@ -132,6 +131,7 @@ def run_scenario_engine(
 
     if das is None:
         das = DefendedAsset.objects.all()
+
     return calculate_scores_for_when(
         scenario=scenario,
         when=when,
@@ -139,3 +139,23 @@ def run_scenario_engine(
         method=method,
         weapon_range_km=weapon_range_km,
     )
+
+
+# ------------------------
+# heavy offline computation
+# ------------------------
+def compute_threats_for_scenario(scenario: Scenario):
+    """
+    Batch-compute threat scores using stored TrackSamples.
+    This function is designed for long-running, high-fidelity TEWA analysis.
+    """
+    samples = (
+        TrackSample.objects
+        .filter(scenario=scenario)
+        .select_related("scenario", "track")
+    )
+
+    for sample in samples.iterator(chunk_size=5000):
+        # placeholder for heavy analytics or replay computations
+        # e.g., compute_score_for_track(...) per sample
+        pass

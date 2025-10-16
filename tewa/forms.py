@@ -1,5 +1,4 @@
 # tewa/forms.py
-
 from __future__ import annotations
 
 from django import forms
@@ -8,6 +7,9 @@ from django.core.exceptions import ValidationError
 from tewa.models import DefendedAsset, ModelParams
 
 
+# ------------------------------
+# Defended Asset Form
+# ------------------------------
 class DefendedAssetForm(forms.ModelForm):
     class Meta:
         model = DefendedAsset
@@ -46,11 +48,17 @@ class DefendedAssetForm(forms.ModelForm):
         return lon
 
 
+# ------------------------------
+# Track Upload Form
+# ------------------------------
 class UploadTrackForm(forms.Form):
     file = forms.FileField(required=True)
     scenario_id = forms.IntegerField(required=False)
 
 
+# ------------------------------
+# Scenario Parameters Form
+# ------------------------------
 class ScenarioParamsForm(forms.ModelForm):
     class Meta:
         model = ModelParams
@@ -60,35 +68,38 @@ class ScenarioParamsForm(forms.ModelForm):
             "sigma_cpa", "sigma_tcpa", "sigma_tdb", "sigma_twrp",
         ]
         widgets = {
-            "R_W_m":   forms.NumberInput(attrs={"min": 1, "step": 1}),
-            "R_DA_m":  forms.NumberInput(attrs={"min": 0, "step": 1}),
-            "tick_s":  forms.NumberInput(attrs={"min": 0.000001, "step": "any"}),
-            "w_cpa":   forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
-            "w_tcpa":  forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
-            "w_tdb":   forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
-            "w_twrp":  forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
-            "sigma_cpa":  forms.NumberInput(attrs={"min": 0, "step": "any"}),
+            "R_W_m": forms.NumberInput(attrs={"min": 1, "step": 1}),
+            "R_DA_m": forms.NumberInput(attrs={"min": 0, "step": 1}),
+            "tick_s": forms.NumberInput(attrs={"min": 0.000001, "step": "any"}),
+            "w_cpa": forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
+            "w_tcpa": forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
+            "w_tdb": forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
+            "w_twrp": forms.NumberInput(attrs={"min": 0, "max": 1, "step": 0.01}),
+            "sigma_cpa": forms.NumberInput(attrs={"min": 0, "step": "any"}),
             "sigma_tcpa": forms.NumberInput(attrs={"min": 0, "step": "any"}),
-            "sigma_tdb":  forms.NumberInput(attrs={"min": 0, "step": "any"}),
+            "sigma_tdb": forms.NumberInput(attrs={"min": 0, "step": "any"}),
             "sigma_twrp": forms.NumberInput(attrs={"min": 0, "step": "any"}),
         }
 
     def clean(self):
         data = super().clean()
 
+        # --- Weights sanity ---
         def f(x): return float(x) if x is not None else 0.0
         wsum = f(data.get("w_cpa")) + f(data.get("w_tcpa")) + \
             f(data.get("w_tdb")) + f(data.get("w_twrp"))
         if abs(wsum - 1.0) > 1e-6:
             raise forms.ValidationError("Weights must sum to 1.0")
 
+        # --- Tick rate ---
         tick = data.get("tick_s")
         if tick is None or tick <= 0:
-            self.add_error("tick_s", "Tick rate must be > 0")
+            self.add_error("tick_s", "Tick rate must be greater than 0")
 
+        # --- Range consistency ---
         R_W, R_DA = data.get("R_W_m"), data.get("R_DA_m")
         if R_W is not None and R_DA is not None and R_DA >= R_W:
             self.add_error(
-                "R_DA_m", "DA radius should be smaller than weapon range")
+                "R_DA_m", "R_DA_m must be positive and less than R_W_m")
 
         return data

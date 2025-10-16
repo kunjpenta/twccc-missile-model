@@ -1,5 +1,8 @@
 <!-- templates/scenario_detail.html -->
-{% extends "base.html" %} {% block title %}Scenario Details - {{ scenario.name }}{% endblock %} {% block content %}
+{% extends "base.html" %}
+{% block title %}Scenario Details - {{ scenario.name }}{% endblock %}
+
+{% block content %}
 <h2>{{ scenario.name }}</h2>
 
 <p><strong>Start Time:</strong> {{ scenario.start_time }}</p>
@@ -9,51 +12,79 @@
 <hr />
 
 <h3>Defended Assets</h3>
-<ul>
-  {% for da in scenario.defendedasset_set.all %}
-  <li>{{ da.name }} - Radius: {{ da.radius_km }} km</li>
-  {% endfor %}
-</ul>
+{% if defended_assets %}
+  <ul>
+    {% for da in defended_assets %}
+      <li>{{ da.name }} — (Lat: {{ da.lat }}, Lon: {{ da.lon }}, Radius: {{ da.radius_km }} km)</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No Defended Assets found.</p>
+{% endif %}
 
 <hr />
 
 <h3>Threat Scores</h3>
-<table class="table table-striped">
-  <thead>
-    <tr>
-      <th>Track ID</th>
-      <th>Defended Asset</th>
-      <th>Threat Score</th>
-      <th>Computed At</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for threat in scenario.threatscore_set.all %}
-    <tr>
-      <td>{{ threat.track.track_id }}</td>
-      <td>{{ threat.da.name }}</td>
-      <td>{{ threat.score }}</td>
-      <td>{{ threat.computed_at }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% if scenario.threatscore_set.all %}
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Track ID</th>
+        <th>Defended Asset</th>
+        <th>Threat Score</th>
+        <th>Computed At</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for threat in scenario.threatscore_set.all %}
+      <tr>
+        <td>{{ threat.track.track_id }}</td>
+        <td>{{ threat.da.name }}</td>
+        <td>{{ threat.score }}</td>
+        <td>{{ threat.computed_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No Threat Scores computed yet.</p>
+{% endif %}
 
 <hr />
 
-<h3>Tracks</h3>
-<ul>
-  {% for track in scenario.track_set.all %}
-  <li>{{ track.track_id }} - Lat: {{ track.lat }}, Lon: {{ track.lon }}</li>
-  {% endfor %}
-</ul>
+<h3>Tracks ({{ tracks.paginator.count }})</h3>
+{% if tracks %}
+
+  <ul>
+    {% for track in tracks %}
+      <li>{{ track.track_id }} — (Lat: {{ track.lat }}, Lon: {{ track.lon }}, Alt: {{ track.alt_m }} m)</li>
+    {% endfor %}
+  </ul>
+
+  <nav aria-label="Track pagination">
+    <ul class="pagination">
+      {% if tracks.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ tracks.previous_page_number }}">Previous</a>
+        </li>
+      {% endif %}
+      <li class="page-item active"><a class="page-link">{{ tracks.number }}</a></li>
+      {% if tracks.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ tracks.next_page_number }}">Next</a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% else %}
+  <p>No Tracks found.</p>
+{% endif %}
 
 <hr />
 
 <!-- Compute Now Button -->
-<form method="post" action="{% url 'tewa:compute_now_scenario' scenario.id %}">
+<form method="post" action="{% url 'scenario_detail' scenario.id %}">
   {% csrf_token %}
   <button type="submit" class="btn btn-primary">Compute Now</button>
 </form>
-
 {% endblock %}

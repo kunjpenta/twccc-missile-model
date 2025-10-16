@@ -1,12 +1,14 @@
 <!-- templates/base.html -->
+
+
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}My App{% endblock %}</title>
-    <link rel="icon" href="{% static 'favicon.ico' %}">
+    <title>{% block title %}Missile Model{% endblock %}</title>
+    <link rel="icon" href="{% static 'favicon.ico' %}" />
 
     <!-- Bootstrap 5 (no jQuery needed) -->
     <link
@@ -20,39 +22,123 @@
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-      integrity="sha512-SnH5WK+bZxgPHs44uWixlK6Ck9F9C5xC6H7tBvT1m9eR6WvF6mC0q3m1xgHjKX4q2D8KZcJm3fU6v+UQ2b9QWg=="
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
 
     <style>
-      table { width:100%; border-collapse:collapse; margin:20px 0; }
-      table th, table td { padding:10px; text-align:left; border:1px solid #ddd; }
-      table th { background:#f4f4f4; }
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --text: #e7e9ee;
+        --muted: #a5adba;
+        --accent: #6ea8fe;
+        --ok: #2ecc71;
+        --warn: #f1c40f;
+        --bad: #e74c3c;
+        --line: #242a33;
+        --chip: #1f2430;
+        --chip-b: #2a3140;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--text);
+      }
+      a {
+        color: var(--accent);
+      }
+      .card,
+      .navbar,
+      footer {
+        background: var(--panel);
+        border-color: var(--line);
+      }
+      .navbar-dark .navbar-nav .nav-link {
+        color: var(--text);
+      }
+      .navbar-dark .navbar-brand {
+        color: #fff;
+      }
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+      }
+      .table th,
+      .table td {
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--text);
+      }
+      .table th {
+        color: var(--muted);
+        background: transparent;
+      }
+      .form-control,
+      .form-select {
+        background: #0e121a;
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      .btn-primary {
+        background: #2d5cff;
+        border-color: #2d5cff;
+      }
+      .btn-outline-primary {
+        color: #6ea8fe;
+        border-color: #6ea8fe;
+      }
+      .alert {
+        border: 1px solid var(--line);
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+      }
     </style>
 
     {% block extra_head %}{% endblock %}
   </head>
   <body class="d-flex flex-column min-vh-100">
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark border-bottom">
       <div class="container">
-        <a class="navbar-brand" href="{% url 'home' %}">Home</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+        <a class="navbar-brand fw-bold" href="{% url 'tewa:home' %}"
+          >TEWA Console</a
+        >
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#mainNav"
+        >
           <span class="navbar-toggler-icon"></span>
         </button>
         <div id="mainNav" class="collapse navbar-collapse">
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item">
-              <a class="nav-link{% if request.path == '/about/' %} active{% endif %}" href="{% url 'about' %}">About</a>
+              <a
+                class="nav-link{% if request.path == '/about/' %} active{% endif %}"
+                href="{% url 'tewa:about' %}"
+                >About</a
+              >
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if request.path == '/contact/' %} active{% endif %}" href="{% url 'contact' %}">Contact</a>
+              <a
+                class="nav-link{% if request.path == '/contact/' %} active{% endif %}"
+                href="{% url 'tewa:contact' %}"
+                >Contact</a
+              >
             </li>
           </ul>
           <ul class="navbar-nav">
             <li class="nav-item">
-              <a class="nav-link{% if request.path == '/login/' %} active{% endif %}" href="{% url 'login' %}">Login</a>
+              <a
+                class="nav-link{% if request.path == '/login/' %} active{% endif %}"
+                href="{% url 'tewa:login' %}"
+                >Login</a
+              >
             </li>
           </ul>
         </div>
@@ -61,26 +147,27 @@
 
     <!-- Flash messages -->
     <div class="container mt-3">
-      {% if messages %}
-        {% for message in messages %}
-          <div class="alert alert-{{ message.tags|default:'info' }} mb-2" role="alert">
-            {{ message }}
-          </div>
-        {% endfor %}
-      {% endif %}
+      {% if messages %} {% for message in messages %}
+      <div
+        class="alert alert-{{ message.tags|default:'info' }} mb-2"
+        role="alert"
+      >
+        {{ message }}
+      </div>
+      {% endfor %} {% endif %}
     </div>
 
     <!-- Main content -->
-    <main class="container mt-4">
-      {% block content %}{% endblock %}
-    </main>
+    <main class="container my-4">{% block content %}{% endblock %}</main>
 
     <!-- Footer -->
-    <footer class="mt-auto py-4 text-center text-muted">
-      <div class="container">&copy; 2025 My App. All rights reserved.</div>
+    <footer class="mt-auto py-4 text-center">
+      <div class="container text-muted">
+        &copy; 2025 Missile Model. All rights reserved.
+      </div>
     </footer>
 
-    <!-- Bootstrap 5 JS (includes Popper v2) -->
+    <!-- Bootstrap 5 JS (includes Popper) -->
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"

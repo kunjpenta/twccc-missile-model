@@ -1,22 +1,29 @@
 # tewa/views.py  — HTML pages only (no API endpoints here)
 
 from __future__ import annotations
-from tewa.services.score_history import get_score_series
-from tewa.services.charting import render_score_history_png
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from rest_framework.decorators import api_view, permission_classes
-from django.http import Http404, HttpResponse, HttpResponseBadRequest
 
 import logging
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.http import  HttpRequest
+from django.core.paginator import Paginator
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
-from tewa.management.commands.compute_threats import Command
-from tewa.models import DefendedAsset, Scenario, ThreatScore
+from tewa.management.commands.compute_threats import (
+    Command,  # adjust import path if different
+)
+from tewa.models import DefendedAsset, Scenario, ThreatScore, Track
+from tewa.services.charting import render_score_history_png
+from tewa.services.score_history import get_score_series
 
 from .forms import DefendedAssetForm, ScenarioParamsForm
 from .models import ModelParams
@@ -32,15 +39,36 @@ def home(request):
 
 
 def scenario_detail(request, scenario_id: int):
+    """
+    Display Scenario details page:
+      - Shows Defended Assets and Tracks with pagination.
+      - On POST, triggers compute command for this scenario.
+    """
     scenario = get_object_or_404(Scenario, pk=scenario_id)
 
+    # Handle "Compute Now" button submission
     if request.method == "POST":
-        # Trigger threat computation for this scenario via management command
         cmd = Command()
         cmd.handle(scenario_id=scenario.id)
         return redirect("scenario_detail", scenario_id=scenario.id)
 
-    return render(request, "scenario_detail.html", {"scenario": scenario})
+    # Query all Defended Assets for this scenario
+    defended_assets = DefendedAsset.objects.filter(
+        scenario=scenario
+    ).order_by("id")
+
+    # Paginate tracks for readability
+    track_list = Track.objects.filter(scenario=scenario).order_by("id")
+    paginator = Paginator(track_list, 10)
+    page_number = request.GET.get("page")
+    tracks = paginator.get_page(page_number)
+
+    # Render the HTML view
+    return render(request, "scenario_detail.html", {
+        "scenario": scenario,
+        "defended_assets": defended_assets,
+        "tracks": tracks,
+    })
 
 
 @require_POST
@@ -154,35 +182,45 @@ def _trigger_compute_now(scenario_id: int) -> None:
         pass
 
 
-@login_required
 def scenario_assumptions_view(request: HttpRequest, scenario_id: int) -> HttpResponse:
+    """
+    Public (read-only) GET; staff/superuser-only POST.
+    Shows/edits ModelParams defaults for a Scenario (R_W_m, R_DA_m, tick_s, weights, sigmas).
+    """
     scenario = get_object_or_404(Scenario, pk=scenario_id)
     params, _ = ModelParams.objects.get_or_create(scenario=scenario)
 
-    # Optional: restrict editing to staff. Read-only view for others.
-    can_edit = request.user.is_staff or request.user.is_superuser
+    # Edit permission only for authenticated staff/superusers
+    can_edit = request.user.is_authenticated and (
+        request.user.is_staff or request.user.is_superuser)
 
     if request.method == "POST":
         if not can_edit:
-            messages.error(
-                request, "You don't have permission to edit scenario assumptions.")
-            return redirect("scenario_assumptions", scenario_id=scenario.id)
+            return HttpResponseForbidden("Login required (staff) to edit scenario assumptions.")
 
         form = ScenarioParamsForm(request.POST, instance=params)
         if form.is_valid():
-            form.instance.updated_by = request.user if hasattr(
-                params, "updated_by") else None
+            # Optional audit field if your model has it
+            if hasattr(params, "updated_by"):
+                form.instance.updated_by = request.user
             form.save()
+
             if "compute_now" in request.POST:
                 _trigger_compute_now(scenario.id)
                 messages.success(
                     request, "Scenario defaults saved. Recompute started.")
-                # Redirect to a reasonable page; adjust if you have a detail route
-                return redirect("scenario_assumptions", scenario_id=scenario.id)
-            messages.success(request, "Scenario defaults saved.")
-            return redirect("scenario_assumptions", scenario_id=scenario.id)
+            else:
+                messages.success(request, "Scenario defaults saved.")
+
+            return redirect("tewa:scenario_assumptions", scenario_id=scenario.id)
     else:
         form = ScenarioParamsForm(instance=params)
+
+    # Read-only widgets for non-editors (public GET)
+    if not can_edit:
+        for f in form.fields.values():
+            f.widget.attrs["disabled"] = "disabled"
+            f.widget.attrs["readonly"] = "readonly"
 
     return render(
         request,
@@ -190,7 +228,7 @@ def scenario_assumptions_view(request: HttpRequest, scenario_id: int) -> HttpRes
         {
             "scenario": scenario,
             "form": form,
-            "can_edit": can_edit,
+            "can_edit": can_edit,   # template can hide Save buttons when False
             "params": params,
         },
     )

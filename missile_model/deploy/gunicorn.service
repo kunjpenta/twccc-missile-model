@@ -1,0 +1,20 @@
+[Unit]
+Description=Gunicorn service for TEWA Missile Model
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/missile_model
+EnvironmentFile=/opt/missile_model/deploy/env.example
+ExecStart=/opt/missile_model/.venv/bin/gunicorn missile_model.wsgi:application \
+    --workers=${GUNICORN_WORKERS:-5} \
+    --timeout=${GUNICORN_TIMEOUT:-90} \
+    --bind unix:/run/gunicorn_tewa.sock
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/gunicorn_tewa/access.log
+StandardError=append:/var/log/gunicorn_tewa/error.log
+
+[Install]
+WantedBy=multi-user.target

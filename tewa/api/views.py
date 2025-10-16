@@ -1,22 +1,32 @@
 # tewa/api/views.py — keeps old import path stable
 # keep near the top with other imports
 from __future__ import annotations
+from tewa.models import ThreatScore
+from django.http import JsonResponse
 
 import csv
 import datetime as dt
 from typing import List, Optional, cast
 
-from django.http import HttpResponse, HttpResponseBadRequest, StreamingHttpResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import render
-from django.utils.http import http_date
 from rest_framework import permissions, status  # single import is enough
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.views import APIView
 
-from tewa.models import ModelParams, Scenario
+from tewa.models import ModelParams, Scenario, ThreatScore
 from tewa.services.charting import render_score_history_png
 from tewa.services.export_csv import iter_rows_for_threat_board
+from tewa.services.score_breakdown_service import (
+    get_score_breakdown,  # your existing service
+)
 from tewa.services.score_history import get_score_series
 
 from .serializers import ScenarioParamsSerializer, ScoreBreakdownSerializer
@@ -53,19 +63,15 @@ __all__ = [
 from typing import Any, Dict
 
 from django.core.exceptions import ObjectDoesNotExist
-from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
-
-from ..services.score_breakdown_service import get_score_breakdown
-from .serializers import ScoreBreakdownSerializer
 
 
 @api_view(["GET"])
 def score_breakdown(request: Request) -> Response:
     """
-    GET /api/tewa/score-breakdown?scenario_id=1&track_id=TGT001&da_id=3[&at=2025-10-14T10:02:00Z]
-    Returns the Task 21 score-breakdown JSON (with legacy flat fields preserved).
+    GET /api/tewa/score_breakdown?scenario_id=1&track_id=TGT001&da_id=3[&at=2025-10-14T10:02:00Z]
+    Returns the Task 21 score_breakdown JSON (with legacy flat fields preserved).
     """
     qp = request.query_params
     scenario_id = qp.get("scenario_id")
@@ -239,7 +245,6 @@ class ScenarioParamsView(APIView):
 @api_view(["GET"])
 @permission_classes([IsAuthenticatedOrReadOnly])
 def score_history_png_view(request):
-    # required params
     try:
         scenario_id = int(request.GET["scenario_id"])
         da_id = int(request.GET["da_id"])
@@ -249,26 +254,81 @@ def score_history_png_view(request):
     except ValueError:
         return HttpResponseBadRequest("IDs must be integers")
 
-    # optional params
     dt_from = request.GET.get("from")
     dt_to = request.GET.get("to")
     width = int(request.GET.get("width", 800))
     height = int(request.GET.get("height", 300))
-    smooth_q = request.GET.get("smooth")
-    smooth = int(smooth_q) if smooth_q else None
+    smooth = request.GET.get("smooth")
+    smooth = int(smooth) if smooth else None
 
-    # fetch series
     series = get_score_series(scenario_id, da_id, track_id, dt_from, dt_to)
     if not series:
-        return Response({"detail": "No score history found"}, status=status.HTTP_404_NOT_FOUND)
+        raise Http404("No score history found")
 
-    # render PNG
     png = render_score_history_png(
         series, width=width, height=height, smooth=smooth)
-
     resp = HttpResponse(png, content_type="image/png")
-    last_ts = series[-1][0]
-    if last_ts:
-        resp["Last-Modified"] = http_date(last_ts.timestamp())
     resp["Cache-Control"] = "private, max-age=60"
+    # optional: Last-Modified
+    try:
+        resp["Last-Modified"] = series[-1][0].strftime(
+            "%a, %d %b %Y %H:%M:%S GMT")
+    except Exception:
+        pass
     return resp
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def score_breakdown_view(request):
+    try:
+        scenario_id = int(request.GET["scenario_id"])
+        da_id = int(request.GET["da_id"])
+        track_id = request.GET["track_id"]
+    except KeyError:
+        return HttpResponseBadRequest("scenario_id, da_id, track_id are required")
+
+    at_iso = request.GET.get("at")
+    data = get_score_breakdown(
+        scenario_id=scenario_id, da_id=da_id, track_id=track_id, at_iso=at_iso)
+    if not data:
+        raise Http404("No breakdown")
+
+    return Response(data, status=status.HTTP_200_OK)
+
+
+# tewa/api/views.py
+
+
+def api_threatscores(request, scenario_id):
+    """
+    Return all ThreatScore rows for a given scenario, ensuring parity with DB.
+    Pulls stored metrics (cpa_km, tcpa_s, tdb_km, twrp_s, score, etc.)
+    and rounds to 6 decimals for deterministic testing.
+    """
+    qs = (
+        ThreatScore.objects
+        .filter(scenario_id=scenario_id)
+        .values(
+            "id",
+            "scenario_id",
+            "da_id",
+            "track_id",
+            "score",         # total/final score
+            "cpa_km",
+            "tcpa_s",
+            "tdb_km",
+            "twrp_s",
+            "computed_at",
+        )
+        .order_by("-score")
+    )
+
+    data = []
+    for row in qs:
+        d = {}
+        for k, v in row.items():
+            d[k] = round(v, 6) if isinstance(v, float) else v
+        data.append(d)
+
+    return JsonResponse(data, safe=False)

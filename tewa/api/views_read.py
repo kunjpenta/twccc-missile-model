@@ -33,7 +33,7 @@ def root(_):
             "/api/tewa/compute_at",
             "/api/tewa/upload_tracks/",
             "/api/tewa/calculate_scores/",
-            "/api/tewa/score-breakdown",
+            "/api/tewa/score_breakdown",
         ]
     })
 

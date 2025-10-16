@@ -81,10 +81,15 @@ class DefendedAsset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def clean(self) -> None:
-        # Extra guardrail (validators already enforce ranges)
-        if not (0 < float(self.radius_km) <= 1000):
-            raise ValidationError("Radius must be between 0 and 1000 km.")
+    def clean(self):
+        if self.radius_km is not None:
+            try:
+                val = float(self.radius_km)
+            except (TypeError, ValueError):
+                raise ValidationError("Radius_km must be a number.")
+            if not (0 < val <= 1000):
+                raise ValidationError(
+                    "Radius_km must be between 0 and 1000 km.")
 
     def __str__(self) -> str:
         # radius without trailing .0; lat/lon printed as given

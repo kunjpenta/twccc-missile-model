@@ -1,6 +1,5 @@
 # tewa/services/kinematics.py
 from __future__ import annotations
-from typing import NamedTuple, Optional
 
 import math
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ from typing import (
     Optional,  # if you keep the optional wrapper shown below
     Tuple,
 )
-from typing import Optional as _Optional
 
 from core.utils.geodesy import LatLon, enu_from_latlon
 from core.utils.units import deg2rad, m_to_km
@@ -185,9 +183,6 @@ def twrp_s(
     # Time to reach range boundary (seconds)
     dist_to_boundary_km = d_km - weapon_range_km
     return dist_to_boundary_km / closing_kmps
-
-
-# tewa/services/kinematics.py
 
 
 class KinematicsBundle(NamedTuple):

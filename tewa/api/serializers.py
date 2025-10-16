@@ -1,6 +1,6 @@
 # tewa/api/serializers.py
 from __future__ import annotations
-from typing import cast
+
 
 from rest_framework import serializers
 
@@ -139,3 +139,12 @@ class ScenarioParamsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("R_DA_m must be < R_W_m")
 
         return attrs
+
+# tewa/api/serializers.py
+
+
+def validate(self, data):
+    weights = [data.get(f"w_{k}") for k in ("cpa", "tcpa", "tdb", "twrp")]
+    if abs(sum(weights) - 1.0) > 0.01:
+        raise serializers.ValidationError("Sum of weights must equal 1.0")
+    return data

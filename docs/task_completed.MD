@@ -15,9 +15,9 @@ Task 2 — PostgreSQL wiring
 Task Name: PostgreSQL wiring
 Sub task: Database Setup
 Sub Sub Task: Configure PostgreSQL DB and migrations
-Description: Connect Django to PostgreSQL, configure DATABASE*URL, and create/verify initial migrations.
+Description: Connect Django to PostgreSQL, configure DATABASE_URL, and create/verify initial migrations.
 Notes: Basic DB setup; ensure psycopg is installed and environment variables are loaded correctly.
-Repo paths touched: missile_model/settings.py, tewa/migrations/*, core/migrations/\_, missile_db.sql
+Repo paths touched: missile_model/settings.py, tewa/migrations/*, core/migrations/, missile_db.sql
 
 Task 3 — Core domain models
 
@@ -94,7 +94,7 @@ Repo paths touched: tewa/forms.py, tewa/serializers.py, tewa/views.py, tests in 
 Project structure reference (relevant folders/files)
 missile_model/
 ├─ manage.py
-├─ readme.MD
+├─ README.md
 ├─ requirements.txt
 ├─ missile_db.sql
 ├─ core/
@@ -334,6 +334,374 @@ Frontend polling optional; template-driven view works for API testing.
 Repo paths touched:
 tewa/views.py, tewa/services/ranking.py, templates/boards/da_board.html, tewa/tests/test_ranking.py, tewa/tests/test_score_breakdown_api.py
 
-This completes Tasks 11–20, matching the style and level of detail from Tasks 1–10.
+Task 21 — Score breakdown view
 
-You can hand this document to your frontend developers or AI teammate as a ready reference for API integration, HTML/CSS testing, and database access.
+Task Name: Score breakdown view
+Sub task: Component Breakdown
+Sub Sub Task: Implement breakdown for each score component
+
+Description:
+Expose a per-threat “score breakdown” that shows component values and contributions for CPA, TCPA, TDB, TWRP, including normalized values and weightings. Provide both an API and a minimal template UI (modal/side panel) from Scenario Detail and Threat Board.
+
+Notes:
+
+Include raw metric, normalized metric (0–1), weight, and weighted contribution.
+
+Support ?scenario_id=, ?da_id=, ?track_id= filters and ?at= timestamp.
+
+Keep the component math consistent with tewa/services/normalize.py and tewa/services/scoring.py.
+
+Repo paths touched:
+
+tewa/services/score_breakdown.py (new; core computation + formatting)
+
+tewa/api/views.py (new endpoint)
+
+tewa/api/serializers.py (ScoreBreakdownSerializer)
+
+tewa/api/urls.py
+
+tewa/services/ranking.py (helper hook)
+
+templates/boards/score_breakdown.html (optional minimal UI)
+
+tewa/tests/test_score_breakdown_api.py (API tests)
+
+API (proposed):
+
+GET /api/tewa/score_breakdown/?scenario_id=&da_id=&track_id=&at= → JSON list of components with {name, raw, normalized, weight, weighted} and final_score.
+
+Acceptance Criteria:
+
+Returns correct per-component breakdown that sums to final_score (±1e-6).
+
+Filters work; 404/400 on invalid IDs; pagination not required but supported if list >50.
+
+Unit tests cover at least 4 scenarios/edge cases (zero weights, missing metrics, extreme values).
+
+Task 22 — CSV export (Threat Board)
+
+Task Name: CSV export
+Sub task: Export Threat Data
+Sub Sub Task: Implement export of threat board to CSV
+
+Description:
+Export current Threat Board (per-DA or global) as CSV, including track metadata, CPA/TCPA/TDB/TWRP, normalized values, weights, and final_score.
+
+Notes:
+
+Use streaming responses for large exports.
+
+Include header row with units and column notes.
+
+Support the same filters as Threat Board: scenario_id, da_id, top_n, at.
+
+Repo paths touched:
+
+tewa/api/views.py (CSV endpoint)
+
+tewa/services/export_csv.py (new; generator/streamer)
+
+tewa/api/urls.py
+
+templates/boards/da_board.html (Export button)
+
+tewa/tests/test_csv_export.py
+
+API (proposed):
+
+GET /api/tewa/export/threats.csv?scenario_id=&da_id=&top_n=&at=
+
+Acceptance Criteria:
+
+CSV downloads with correct MIME/type, ordered by final_score desc by default.
+
+Columns: scenario, da, track_id, callsign, time, cpa_m, tcpa_s, tdb_s, twrp_s, n_cpa, n_tcpa, n_tdb, n_twrp, w_cpa, w_tcpa, w_tdb, w_twrp, final_score.
+
+Export of ≥100k rows works without timeout on target infra (document any limits).
+
+Task 23 — Scenario assumptions page
+
+Task Name: Scenario assumptions page
+Sub task: Scenario Defaults
+Sub Sub Task: Create page to set defaults for scenario parameters (weapon range, DA radius)
+
+Description:
+UI + API for setting and persisting scenario-level defaults: weapon range (R_W), DA radius (R_DA), tick rate, default model weights, sigma/scale factors. Values apply as defaults when creating DAs/Tracks or when parameters are absent.
+
+Notes:
+
+Staff-only access.
+
+Show effective value resolution: scenario override → global default → code default.
+
+Add server-side validation and help text.
+
+Repo paths touched:
+
+tewa/models.py (ScenarioSettings or extend ModelParams linkage)
+
+tewa/forms.py, tewa/serializers.py
+
+tewa/views.py, tewa/urls.py
+
+templates/scenarios/assumptions.html
+
+tewa/tests/test_scenario_assumptions.py
+
+API (proposed):
+
+GET/PUT /api/tewa/scenario_defaults/?scenario_id=
+Body: { R_W, R_DA, tick_hz, weights: {cpa, tcpa, tdb, twrp}, sigmas: {...} }
+
+Acceptance Criteria:
+
+Values persist and affect new compute runs when explicit params are missing.
+
+Validation: R_W, R_DA > 0, tick_hz in [1, 20] (tunable), weights sum not required.
+
+Permission-guarded views and endpoints.
+
+Task 24 — Basic plotting (server-side PNG)
+
+Task Name: Basic plotting
+Sub task: PNG Chart
+Sub Sub Task: Generate basic PNG charts for score history using Matplotlib
+
+Description:
+Generate server-side PNG charts (no JS dependency) for score history per track, per DA, and per scenario time window. Return PNG bytes via HTTP and expose <img> tags in templates.
+
+Notes:
+
+Use Matplotlib Agg backend.
+
+Anti-aliasing, axes labels (UTC), legend (final score + components).
+
+Limit series to sane max points (downsample if needed).
+
+Repo paths touched:
+
+tewa/services/charting.py (new; data prep + plotting)
+
+tewa/api/views.py (image endpoint)
+
+tewa/api/urls.py
+
+templates/boards/da_board.html (thumbnail chart)
+
+tewa/tests/test_chart_endpoint.py
+
+API (proposed):
+
+GET /api/tewa/charts/score_history.png?scenario_id=&da_id=&track_id=&from=&to=
+
+Acceptance Criteria:
+
+Valid PNG returned with correct caching headers (ETag/Cache-Control).
+
+Handles missing data gracefully with placeholder “No data” plot.
+
+Unit test: PNG signature check + basic pixel size assert.
+
+Task 25 — Validation tests (pytest)
+
+Task Name: Validation tests (pytest)
+Sub task: Unit Tests
+Sub Sub Task: Write unit tests for kinematic functions and integration tests
+
+Description:
+Add thorough unit tests for CPA/TCPA/TDB/TWRP formulas and integration tests for the end-to-end pipeline (seed → compute → rank → breakdown).
+
+Notes:
+
+Include edge cases: parallel course, head-on, zero velocity, DA boundary grazing, negative TCPA.
+
+Freeze time for determinism.
+
+Repo paths touched:
+
+tewa/tests/test_kinematics_units.py
+
+tewa/tests/test_pipeline_integration.py
+
+core/tests/test_units_geodesy.py (extend if needed)
+
+Acceptance Criteria:
+
+pytest -q passes; coverage for tewa/services/kinematics.py ≥ 90%.
+
+Numeric tolerances documented (1e-6 float compare).
+
+Task 26 — Data sanity checks (input validation)
+
+Task Name: Data sanity checks
+Sub task: Input Validation
+Sub Sub Task: Add data validation for input forms
+
+Description:
+Introduce server-side sanity checks across forms/serializers for DAs, Tracks, and CSV imports to prevent invalid inputs.
+
+Notes:
+
+Validate lat ∈ [-90, 90], lon ∈ [-180, 180], radius > 0, speed ≥ 0, heading ∈ [0, 360).
+
+CSV import: reject duplicates (track_id + timestamp), invalid timestamps, missing fields.
+
+Display actionable error messages suitable for UI toast.
+
+Repo paths touched:
+
+tewa/forms.py (validators)
+
+tewa/api/serializers.py (DRF validators)
+
+tewa/services/csv_import.py (strict mode + report)
+
+tewa/tests/test_validation.py (extend)
+
+Acceptance Criteria:
+
+Bad inputs are blocked with specific error messages; good inputs remain unaffected.
+
+CSV import generates a per-row report for errors (line number + reason).
+
+Task 27 — Performance pass (DB optimization)
+
+Task Name: Performance pass
+Sub task: Database Optimization
+Sub Sub Task: Add indexes, optimize queries
+
+Description:
+Add sensible indexes and query improvements to accelerate Threat Board, Breakdown, and History queries.
+
+Notes (proposed indexes):
+
+TrackSample(track_id, timestamp) (BTREE)
+
+ThreatScore(scenario_id, da_id, track_id, computed_at) (BTREE)
+
+ThreatScore(final_score DESC) via composite index (scenario_id, da_id, final_score DESC) for top-N
+
+Partition or timescale approach (optional phase-2) for very large histories.
+
+Repo paths touched:
+
+tewa/migrations/00xx_add_indexes.py
+
+tewa/services/ranking.py (select_related / prefetch_related)
+
+tewa/services/threat_compute.py (bulk_create, chunking)
+
+tewa/tests/test_performance_smoke.py
+
+Acceptance Criteria:
+
+Threat Board query time improves (document baseline vs. optimized).
+
+EXPLAIN ANALYZE screenshots or text noted in repo /docs/perf/.
+
+No regressions on correctness.
+
+Task 28 — Auth & roles
+
+Task Name: Auth & roles
+Sub task: Implement Login
+Sub Sub Task: Implement basic user authentication and roles
+
+Description:
+Enable login/logout and role-gated access: Admin/Staff can edit parameters and assumptions; Operator can view boards and run compute; Viewer read-only.
+
+Notes:
+
+Use Django auth + DRF Session or Token Auth (document chosen path).
+
+CSRF hardened; secure cookies; password policy; admin MFA (recommended).
+
+Decorators/permissions on sensitive endpoints (assumptions, model params).
+
+Repo paths touched:
+
+missile_model/settings.py (auth backends, CSRF/session config)
+
+tewa/permissions.py (new; DRF permissions)
+
+tewa/api/views.py (guard edit endpoints)
+
+templates/auth/login.html, templates/base.html (login status)
+
+tewa/tests/test_auth_permissions.py
+
+API / Routes (proposed):
+
+POST /api/auth/login/ (if token based) or form login at /login/
+
+Role checks applied to: scenario defaults, model params, CSV import, delete DA/Track.
+
+Acceptance Criteria:
+
+Unauthenticated users cannot access protected endpoints.
+
+Role matrix enforced; tests cover each role/endpoint combo.
+
+Task 29 — Docs & examples
+
+Task Name: Docs & examples
+Sub task: README
+Sub Sub Task: Write project documentation and usage examples
+
+Description:
+Create a top-level README.md and /docs/ notes with formulas, CSV formats, example payloads, testing, and deployment quick start.
+
+Notes (include):
+
+Kinematics formulas (CPA/TCPA/TDB/TWRP) with symbol legend and units.
+
+CSV column spec (sample files in /docs/examples/).
+
+API table (endpoints, params, examples).
+
+“How to run tests”, “How to seed demo data”.
+
+Repo paths touched:
+
+README.md
+
+docs/kinematics.md, docs/api.md, docs/csv.md, docs/perf/, docs/deploy.md
+
+docs/examples/\*.csv
+
+Acceptance Criteria:
+
+New developer can run seed → compute → export in <15 minutes using docs only.
+
+Links between docs are valid (checked via CI lint if available).
+
+Task 30 — Deployment basics
+
+Task Name: Deployment basics
+Sub task: Setup Deployment
+Sub Sub Task: Configure Gunicorn/Nginx and backup scripts
+
+Description:
+Baseline production deployment on a single VM: Gunicorn app server, Nginx reverse proxy/SSL, systemd units, log rotation, and PostgreSQL backup scripts.
+
+Notes:
+
+Gunicorn: workers = CPU\*2+1, timeout 60–120s, health check endpoint.
+Nginx: gzip, proxy_read_timeout tuned for CSV export; SSL/TLS 1.2+; HSTS optional.
+Backups: nightly pg_dump to dated folder, 7–14 day retention; integrity check.
+Environment via .env + SYSTEMD_ENVIRONMENT_FILE.
+
+Repo paths touched:
+deploy/gunicorn.service, deploy/nginx.conf (templates)
+deploy/env.example
+scripts/backup_pg.sh, scripts/restore_pg.sh
+
+docs/deploy.md
+
+tewa/tests/test_healthcheck.py (simple /healthz)
+
+Acceptance Criteria:
+systemctl units start cleanly; curl /healthz returns 200.
+Nginx serves static files (if enabled) and proxies API.
+Successful backup/restore dry run documented in docs/deploy.md.
