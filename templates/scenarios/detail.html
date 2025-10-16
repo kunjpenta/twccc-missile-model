@@ -152,3 +152,12 @@
   });
 </script>
 {% endblock %}
+<!-- templates/scenarios/detail.html -->
+{% include "partials/breadcrumbs.html" with trail="Home / Scenarios / Scenario-{{ scenario.id }}" %}
+
+{% if user.is_staff or perms.tewa.compute_now %}
+  <form method="post" action="{% url 'tewa:compute_now_scenario' scenario.id %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning">⚙ Compute Now</button>
+  </form>
+{% endif %}
