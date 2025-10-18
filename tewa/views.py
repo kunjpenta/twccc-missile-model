@@ -1,4 +1,4 @@
-# tewa/views.py  — HTML pages only (no API endpoints here)
+# tewa/views.py
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def scenario_detail(request, scenario_id: int):
     if request.method == "POST":
         cmd = Command()
         cmd.handle(scenario_id=scenario.id)
-        return redirect("scenario_detail", scenario_id=scenario.id)
+        return redirect("tewa:scenario_detail", scenario_id=scenario.id)
 
     # Query all Defended Assets for this scenario
     defended_assets = DefendedAsset.objects.filter(
@@ -81,7 +81,7 @@ def compute_now_scenario(request, scenario_id: int):
     for da in DefendedAsset.objects.filter(scenario=scenario):
         cmd.handle(scenario_id=scenario.id, da_id=da.id)
 
-    return redirect("scenario_detail", scenario_id=scenario.id)
+    return redirect("tewa:scenario_detail", scenario_id=scenario.id)
 
 
 # ---------- DA CRUD (HTML) ----------

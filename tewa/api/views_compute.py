@@ -1,5 +1,6 @@
 # tewa/api/views_compute.py
 from __future__ import annotations
+from rest_framework.permissions import AllowAny
 
 import uuid
 from datetime import timedelta
@@ -12,8 +13,14 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
+from rest_framework.permissions import (
+    IsAuthenticated,
+)
 from rest_framework.response import Response
 
 from tewa.api.query_schemas import RankingQuerySerializer
@@ -94,7 +101,7 @@ def compute_now(request):
         "computed_at": timezone.now().isoformat(),
         "top3": [
             {"track": s.track.track_id, "score": s.score}
-            for s in sorted(scores, key=lambda s: s.score, reverse=True)[:3]
+            for s in sorted(scores, key=lambda s: float(s.score or float("-inf")), reverse=True)[:3]
         ],
     }
 
@@ -106,6 +113,7 @@ def compute_now(request):
 
 
 @api_view(["POST"])
+@permission_classes([AllowAny])   # ⬅️ add this
 def compute_at(request):
     body = _as_mapping(getattr(request, "data", {}))
 
@@ -215,6 +223,7 @@ def compute_at(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])   # (optional but consistent)
 def ranking(request):
     params = _as_mapping(getattr(request, "query_params", {}))
     q = RankingQuerySerializer(data=params)
@@ -301,6 +310,8 @@ def upload_tracks(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
+@authentication_classes([])   # clears any global auth backends
 def score_breakdown(request):
     """
     GET query:

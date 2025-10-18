@@ -1,0 +1,54 @@
+{% extends "docs/_doc_base.html" %}
+{% block crumbs %}<a href="{% url 'core:docs-index' %}">Index</a> / <strong>Frontend</strong>{% endblock %}
+{% block doc %}
+<h1>TEWA Frontend Integration Guide</h1>
+<p><em>Version: 1.0 · Date: {{ now|default:"" }}</em></p>
+
+<!-- You can keep this “Download raw” link if you also add the static file in step 3 -->
+<p><a href="{% static 'docs/tewa-frontend.md' %}" download>Download Markdown</a></p>
+
+<!-- Main content (paste your guide here) -->
+<details open>
+  <summary><strong>Overview</strong></summary>
+  <div style="margin-top:.5rem">
+    <p>The TEWA system evaluates threats (CPA, TCPA, TDB, TWRP) and produces a normalized ThreatScore in [0,1]. Supports live and time-based (interpolated) compute, with API endpoints to trigger, fetch and rank threats.</p>
+  </div>
+</details>
+
+<details open>
+  <summary><strong>API Endpoints</strong></summary>
+  <div style="margin-top:.5rem">
+    <ul>
+      <li><code>POST /api/tewa/compute_now/</code> – compute for current states</li>
+      <li><code>POST /api/tewa/compute_at/</code> – compute at timestamp (linear/latest)</li>
+      <li><code>GET /api/tewa/threats/</code> – list persisted ThreatScores</li>
+      <li><code>GET /api/tewa/ranking/</code> – top-N ranking per scenario/DA</li>
+    </ul>
+    <p>Responses include <em>score</em> and component breakdown for UI explainability.</p>
+  </div>
+</details>
+
+<details>
+  <summary><strong>Data Models</strong></summary>
+  <div style="margin-top:.5rem">
+    <p>Scenario, DefendedAsset, Track, TrackSample, ModelParams, ThreatScore (see full spec in the raw download).</p>
+  </div>
+</details>
+
+<details>
+  <summary><strong>UI Guidelines</strong></summary>
+  <div style="margin-top:.5rem">
+    <ul>
+      <li>Threats Table sorted by <code>score</code> desc</li>
+      <li>Score breakdown panel (CPA/TCPA/TDB/TWRP)</li>
+      <li>Time slider + “Compute at time” action</li>
+      <li>UTC everywhere; ISO8601 timestamps</li>
+    </ul>
+  </div>
+</details>
+
+<p style="margin-top:1rem;color:#666">For the complete, detailed guide, paste the full text below or rely on the raw Markdown link above.</p>
+<pre style="white-space:pre-wrap;border:1px solid #eee;border-radius:8px;padding:12px;margin-top:.5rem;">
+<!-- PASTE the full “TEWA Frontend Integration Guide” text here if you want it inline -->
+</pre>
+{% endblock %}

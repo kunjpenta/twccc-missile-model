@@ -1,492 +1,610 @@
-13/10/2025
-Backend progress log (detailed)
+TEWA — Frontend Integration Brief (v1)
 
-1. Environment & test harness
+Date: 13 Oct 2025 • Audience: Angular/Frontend devs
 
-Goal: run Django + pytest cleanly inside the project venv and make tests deterministic.
+This is a focused rewrite of the backend progress for you. It tells you exactly what to call, what the numbers mean, and how to render them without guesswork.
 
-Activated the project venv and verified executables:
+1. What’s ready (why you care)
 
-source /home/kunj/jay/twccc/missile_model/.venv/bin/activate
-which -a python pytest
-python -m pytest -q -p pytest_django --ds=missile_model.settings
+Deterministic threat scoring for Track × Defended Asset (DA).
 
-Installed pytest-django inside the venv to satisfy the plugin import:
+Stable, UTC-only API under /api/tewa/.
 
-pip install pytest-django
+Consistent scoring semantics (edge cases fixed).
 
-Resolved ImproperlyConfigured: Requested setting INSTALLED_APPS... by always passing the Django settings module on the CLI:
+Useful shapes for dashboards: total score and component breakdowns.
 
--p pytest_django --ds=missile_model.settings
+ETag support for cheap polling.
 
-Eliminated path conflicts (user-local pytest vs venv pytest) by using:
+2. Endpoints you’ll call (cheat sheet)
 
-python -m pytest ...
+Base: /api/tewa/ (JSON)
 
-Result: stable test runs from the venv; consistent plugin loading; no settings bootstrap errors.
+GET /ranking/?scenario_id=1&top_n=10[&da_id=2]
+Sorted by score desc, then track_id asc. Returns computed_at (UTC) and grouped lists per DA. Supports ETag.
 
-2. Scoring & normalization redesign
+POST /compute_now/
+Body: {"scenario_id":1,"weapon_range_km":20}
+Triggers immediate compute using latest snapshots; returns a success payload. (Use for manual “Recompute” button.)
 
-Why: Original scoring entrypoints were inconsistent (positional vs keyword), and tests were flaky around edge-cases (negative TCPA, None/inf, clamping).
+POST /compute_at/
+Body:
 
-Files & functions touched:
+{
+"scenario_id":1,
+"when":"2025-09-30T06:07:30Z",
+"da_ids":[1,2],
+"method":"linear", // or "latest"
+"weapon_range_km":20
+}
 
-tewa/services/scoring.py
+Computes threat at a specific time (linear interpolation).
 
-normalize(value, scale, clamp=True)
+GET /score_breakdown?scenario_id=1&track_id=T1&da_id=3[&at=ISO-UTC]
+Returns per-threat raw metrics, normalized components, weights, and final score for explainability panels.
 
-Normalizes as 1 - value/scale. If clamp=True, clipped to [0, 1].
+GET /modelparams/?scenario_id=1
+Current weights/scales/flags (so you can label charts).
 
-Validates positive scale.
+GET /da/
+Canonical DA list. (Legacy /defendedassets/, /das/ remain read-only.)
 
-\_coerce_params(p)
+Note: CSV upload exists for ops, not typical UI: POST /upload_tracks/ (multipart).
 
-Accepts either a dict-like mapping or a Django ModelParams object.
+3. Response shapes (examples)
+   Ranking (example)
+   {
+   "scenario_id": 1,
+   "computed_at": "2025-09-30T06:07:30Z",
+   "results": [
+   {
+   "da": {"id": 1, "name": "Alpha", "lat": 12.3, "lon": 77.5, "radius_km": 50},
+   "top": [
+   {
+   "track_id": "T1",
+   "score": 0.83,
+   "components": {"cpa": 0.90, "tcpa": 0.72, "tdb": 0.64, "twrp": 0.91}
+   },
+   { "track_id": "T2", "score": 0.61, "components": { "cpa": 0.70, "tcpa": 0.55, "tdb": 0.40, "twrp": 0.79 } }
+   ]
+   }
+   ]
+   }
 
-Produces a complete ModelParamsDict with defaults:
+Score breakdown (example)
+{
+"scenario_id": 1,
+"track_id": "T1",
+"da_id": 3,
+"computed_at": "2025-10-14T10:02:00Z",
+"metrics": { "cpa_m": 1234.5, "tcpa_s": 67.8, "tdb_s": 90.2, "twrp_s": 12.0 },
+"normalized": { "cpa": 0.82, "tcpa": 0.61, "tdb": 0.34, "twrp": 0.74 },
+"weights": { "cpa": 0.35, "tcpa": 0.25, "tdb": 0.20, "twrp": 0.20 },
+"contributions": { "cpa": 0.287, "tcpa": 0.153, "tdb": 0.068, "twrp": 0.148 },
+"score": 0.656,
+"params": { "clamp_0_1": true }
+}
 
-Weights: w_cpa, w_tcpa, w_tdb, w_twrp (default 0.25 each)
+4. Data semantics you’ll display
 
-Scales: cpa_scale_km=20.0, tcpa_scale_s=120.0, tdb_scale_km=30.0, twrp_scale_s=120.0
+Score scale: by default 0–1 (clamped). Higher = more threatening.
 
-Clamp flag: clamp_0_1=True
+Components (normalized): each in 0–1; combined with weights to make the final score.
 
-score_components_to_threat(cpa_km, tcpa_s, tdb_km, twrp_s, params)
+TCPA (time to CPA): if negative, it’s a past event → contributes 0 (UI may show “past CPA”).
 
-Positional-friendly API (tests rely on this).
+TWRP (time to weapon-release window): if no opportunity, backend returns +inf in metrics; its normalized contribution is 0. Display as “No release opportunity” instead of a number.
 
-Edge handling:
+UTC only: inputs and outputs are UTC (...Z). You can localize for display, but send UTC to the API.
 
-Negative TCPA ⇒ treat as “past event” ⇒ contribution 0.
+5. UX behavior (recommended)
 
-None/NaN/inf in optional terms ⇒ contribution 0.
+Boards: sort by score DESC; tie-break by track_id ASC.
 
-Final clamping controlled by params['clamp_0_1'] (can exceed 1 if disabled).
+Color bands (example):
 
-combine_score(...) (legacy/simple combiner retained)
+≥ 0.80 → Critical (red)
 
-Fixed scales/weights; clamps to [0,1] for old callers.
+0.60–0.79 → High (orange)
 
-Outcome: deterministic, testable scoring with clear semantics and robust defaults.
+0.40–0.59 → Medium (yellow)
 
-3. Threat computation pipeline (CPA/TCPA/TDB/TWRP → score)
+< 0.40 → Low (green)
 
-Why: unify how raw kinematics feed into scoring, align normalization semantics with tests, and ensure persisted ThreatScore rows are coherent.
+Explain: show a stacked bar of component contributions or a 4-bar breakdown with tooltips using normalized and weights.
 
-Files & functions touched:
+Labels:
 
-tewa/services/threat_compute.py
+Negative TCPA → “Past CPA”
 
-compute_threat_score(...)
+twrp_s = ∞ → “No release opportunity”
 
-Pure compute function that:
+Actions:
 
-Uses cpa_tcpa (closest point of approach + time) and \_distance_km_latlon (TDB proxy) + time_to_weapon_release_s (TWRP).
+“Recompute” → POST /compute_now/
 
-Normalizes via inv1 + clamps via clamp01 (consistent with our test semantics).
+“What-if at time T” → POST /compute_at/ then refresh /ranking/
 
-Returns:
+6. Polling with ETag (cheap refresh)
 
-tcpa_s non-negative (negative becomes 0.0 in the return contract).
+Poll /ranking/?scenario_id=...&top_n=... every 5–10s with If-None-Match. Handle 304 to skip re-render.
 
-twrp_s becomes +inf if there’s no release opportunity.
+TypeScript snippet:
 
-Weighted sum with param defaults (from \_coerce_params).
+let etag: string | undefined;
 
-compute_score_for_track(scenario, da, track, params, weapon_range_km=None)
+async function fetchRanking() {
+const res = await fetch(`/api/tewa/ranking/?scenario_id=1&top_n=10`, {
+headers: etag ? { "If-None-Match": etag } : {}
+});
 
-Fetches CPA/TCPA/TWRP/TDB and calls the new score_components_to_threat.
+if (res.status === 304) return null;
 
-Persists a ThreatScore row with components + score + computed_at.
+etag = res.headers.get("ETag") ?? undefined;
+return res.json(); // contains computed_at, results[…]
+}
 
-batch_compute_for_scenario(scenario_id, da_id, weapon_range_km=None)
+7. Error handling (UI rules)
 
-Retrieves scenario & DA.
+Prefer detail when present: {"detail":"Not found."}
 
-Ensures a ModelParams exists with non-zero defaults via get_or_create(defaults=...) to avoid zeroed scores.
+Otherwise show the first field error (DRF style).
 
-Iterates tracks and persists scores via compute_score_for_track.
+For CSV upload, render all items in errors[].
 
-calculate_scores_for_when(scenario, when, das, method="linear", weapon_range_km=20.0)
+Typical status codes:
 
-Pure compute (no persistence): samples Track states at when, computes components and normalized contributions, returns a sorted list of dicts.
+400 validation (bad lat/lon, radius, CSV header, types)
 
-Makes it easy for API or reporting without DB side effects.
+404 not found (scenario/DA/track)
 
-Type simplification: Removed fragile references to a non-existing ParamsLike import in some places; replaced with \_coerce_params and straightforward typing that works for both dicts and model instances.
+409 duplicate (track_id, t) on ingest
 
-Outcome: consistent and reusable threat compute across pure-calculation, per-track persistence, and batch runs.
+422 semantic (e.g., time outside scenario window)
 
-4. API & command integration
+8. Types you can use (quick draft)
+   export type Normalized = { cpa: number; tcpa: number; tdb: number; twrp: number };
 
-API entrypoints touched/verified:
+export interface RankingItem {
+track_id: string;
+score: number; // 0..1 (typical)
+components: Normalized; // 0..1 each
+}
 
-tewa/api/views.py and tewa/api/urls.py
+export interface DARanking {
+da: { id: number; name: string; lat: number; lon: number; radius_km: number };
+top: RankingItem[];
+}
 
-Ensured imports refer to corrected services (engine, threat_compute) and that tests can hit endpoints.
+export interface RankingResponse {
+scenario_id: number;
+computed_at: string; // ISO-UTC
+results: DARanking[];
+}
 
-/api/tewa/compute_at endpoint:
+export interface ScoreBreakdown {
+scenario_id: number;
+track_id: string | number;
+da_id: number;
+computed_at: string;
+metrics: { cpa_m: number; tcpa_s: number; tdb_s: number; twrp_s: number | "inf" };
+normalized: Normalized;
+weights: { cpa: number; tcpa: number; tdb: number; twrp: number };
+contributions: { cpa: number; tcpa: number; tdb: number; twrp: number };
+score: number;
+params?: { clamp_0_1?: boolean };
+}
 
-Verified linear interpolation path persists scores (from tests).
+9. Integration checklist
 
-Updated code paths to rely on the new scoring pipeline.
+Use UTC ISO-8601 for any time you send (...Z).
 
-Management commands:
+Render score (0–1) and an explainable breakdown (normalized × weights).
 
-tewa/management/commands/compute_threats.py
+Treat negative TCPA as “past” (display hint; contribution already zeroed).
 
-Calls batch_compute_for_scenario(...) per input scenario/DA.
+Treat twrp_s = ∞ as “No release opportunity.”
 
-Verified output counts and score positivity (from tests).
+Poll /ranking/ with ETag; handle 304.
 
-Outcome: endpoints and commands work with the unified scoring semantics and pass tests.
+Prefer /da/ (canonical).
 
-5. Tests: fixes, additions, stability
+On errors, show detail or first field error; for uploads show all errors[].
 
-Key file:
+If you want a tiny mock JSON file for local UI work, I can generate one with a few DAs and a dozen tracks following the shapes above.
 
-core/tests/test_scoring.py
+You said:
+write in detailed
+ChatGPT said:
+Thought for 11s
+TEWA — Frontend Developer Guide (detailed)
 
-Removed incorrect self fixture usage in top-level tests.
+Audience: Angular/FE engineers
+Back-end: Django + DRF, stable prefix /api/tewa/
+All times: UTC in/out (ISO-8601). Frontend may localize for display.
 
-Factored a single \_params_dict(clamp=True|False) helper.
+This guide tells you exactly what to call, what the numbers mean, and how to render threat scores without guesswork.
 
-Tests now cover:
+1. What the FE can rely on
 
-inv1 and clamp01 utilities.
+Deterministic threat scoring per Track × Defended Asset (DA).
 
-Weighted scoring happy path.
+Stable REST paths under /api/tewa/ (see §4).
 
-Negative TCPA lowers score vs positive.
+JSON responses include a total score and component breakdown (CPA, TCPA, TDB, TWRP).
 
-Weight emphasis changes ranking as expected.
+ETag on /ranking/ so you can poll cheaply.
 
-compute_threat_score produces bounded score and consistent components.
+All inputs/outputs timestamps are UTC; backend normalizes anything you send.
 
-twrp=None returns +inf and yields a lower score.
+2. Threat score semantics (display rules)
 
-Scores > 1 permitted when clamp_0_1=False.
+A threat score is a weighted blend of four normalized components:
 
-Missing params fallback to defaults.
+CPA (closest distance) — smaller distance ⇒ higher normalized value (worse).
 
-Other passing test suites:
+TCPA (time to CPA) — closer in time ⇒ higher normalized value.
+If negative (CPA happened in the past), its contribution is 0 (display tip: “Past CPA”).
 
-tewa/tests/test_api_compute_at.py (linear interpolation & persistence)
+TDB (to DA boundary) — time/distance to cross the asset’s ring. Already inside ⇒ treated as immediate (high).
 
-tewa/tests/test_compute_multiple_scenarios.py (multiple scenarios)
+TWRP (time to weapon-release window) — time to weapon-release ring.
+If no opportunity, metrics may be +inf; its contribution is 0 (display “No release opportunity”).
 
-tewa/tests/test_compute_threats.py (management command)
+Normalized component range: typically 0–1.
+Final score range: 0–1 when clamped (default). Higher = more threatening.
 
-tewa/tests/test_csv_import.py, tewa/tests/test_ranking.py, kinematics & geodesy tests.
+The backend returns both raw metrics (e.g., meters/seconds) and normalized 0–1 values (when you fetch detailed rows). Use normalized values to render bars, and the raw ones for tooltips.
 
-Final status:
-All tests pass reliably:
+3. Common UI patterns (recommendations)
 
-34 passed
+Threat board: per-DA lists, each item = {track_id, score, components}.
 
-6. Coverage workflow & results
+Sort by score desc, tie-break by track_id asc.
 
-Commands used:
+Bands (example):
+≥0.80 critical, 0.60–0.79 high, 0.40–0.59 medium, <0.40 low.
 
-coverage erase
-coverage run -m pytest -q
-coverage report --fail-under=85
-coverage html
+Explainability panel: a stacked bar of contributions or four separate bars for CPA/TCPA/TDB/TWRP (values from components).
 
-# open htmlcov/index.html
+Tooltip for TCPA: show “Past CPA” if the returned raw TCPA < 0 in a detail row (the ranking payload already zeroes its contribution).
 
-Notes:
+Tooltip for TWRP: show “No release opportunity” when metric is infinite.
 
-We first saw low overall coverage because the report included many Django views/admin/forms/modules outside our target. After a clean coverage erase and focusing the scope, the effective (measured) set showed strong coverage.
+Polling: /ranking/ every 5–10s with If-None-Match; skip re-render on 304.
 
-A later minimal report showed:
+4. REST endpoints you’ll actually use
 
-tewa/models.py ~92% (a few unhit branches/lines)
+Base: /api/tewa/ (JSON)
 
-tewa/services/kinematics.py ~91% (edge branches)
+4.1 Lists & health
 
-The complete test run (without restricting scope) still passes; coverage can be tuned by selecting or omitting modules in .coveragerc if you want repository-wide thresholds.
+GET /health → { "status": "ok" }
 
-Outcome: repeatable coverage workflow; HTML report generated at htmlcov/index.html.
+GET /scenarios/ → list scenarios
 
-7. Repro recipe (copy/paste)
+GET /da/ → list Defended Assets (canonical; legacy read-only aliases exist)
 
-# 1) Activate venv
+4.2 Tracks & samples (debug/ops views)
 
-source /home/kunj/jay/twccc/missile_model/.venv/bin/activate
+GET /tracks/?scenario_id=1
 
-# 2) Quick tests (uses project settings)
+GET /tracksamples/?track_id=T1&from=ISO&to=ISO
 
-python -m pytest -q -p pytest_django --ds=missile_model.settings
+4.3 Upload (ops)
 
-# 3) Full tests + coverage report
+POST /upload_tracks/ (multipart)
+fields: file, scenario_id
+CSV headers (required): track_id,lat,lon,alt_m,speed_mps,heading_deg,timestamp
+Response includes counts and errors[].
 
-coverage erase
-coverage run -m pytest -q
-coverage report --fail-under=85
-coverage html
+4.4 Compute (buttons in UI)
 
-# open htmlcov/index.html in your browser
+POST /compute_now/
+Body: {"scenario_id":1,"weapon_range_km":20}
+Uses latest track snapshots; returns a summary payload.
 
-8. Design decisions (the “why”)
+POST /compute_at/
+Body:
 
-Param coercion: \_coerce_params lets us use the same functions from tests (dicts) and from runtime (ORM instance) without conditional code everywhere.
+{
+"scenario_id": 1,
+"when": "2025-09-30T06:07:30Z",
+"da_ids": [1,2],
+"method": "linear", // or "latest"
+"weapon_range_km": 20
+}
 
-Edge semantics:
+Computes at time T with linear interpolation. Returns a summary and persists results.
 
-Negative TCPA = “closest approach happened in the past” ⇒ zero urgency component to avoid paradoxical boosts.
+4.5 Ranking & detailed rows (what you render)
 
-No TWRP (None) = not weapon-releasable ⇒ zero component, but we return +inf in payloads to make the “unreachable” state explicit.
+GET /ranking/?scenario_id=1&top_n=10[&da_id=2]
+Returns grouped per-DA lists: each item has {track_id, score, components} and a computed_at (UTC). Response includes ETag header.
 
-Optional clamping: clamp_0_1 allows tests to intentionally create >1 scores to demonstrate weight scaling behavior.
+GET /score/?scenario_id=1[&da_id=2][&page=1]
+Flat ThreatScore rows (historical feed). Each row includes raw metrics and normalized components plus the final score and computed_at.
+Use this when you need a per-track/DA breakdown view; filter client-side to the track you’re explaining.
 
-Pure compute vs persistence: separated compute functions so the API and commands can choose whether to persist.
+4.6 Model parameters (labels/legend)
 
-9. What we can do next (optional)
+GET /modelparams/?scenario_id=1
+Returns weights/scales/flags so you can annotate charts and legends (“weights emphasize CPA”, etc.).
 
-Targeted coverage:
+5. Response shapes (illustrative)
+   5.1 /ranking/ (grouped per DA)
+   {
+   "scenario_id": 1,
+   "computed_at": "2025-09-30T06:07:30Z",
+   "results": [
+   {
+   "da": { "id": 1, "name": "Alpha", "lat": 12.97, "lon": 77.59, "radius_km": 50 },
+   "top": [
+   {
+   "track_id": "T1",
+   "score": 0.83,
+   "components": { "cpa": 0.90, "tcpa": 0.72, "tdb": 0.64, "twrp": 0.91 }
+   },
+   {
+   "track_id": "T2",
+   "score": 0.61,
+   "components": { "cpa": 0.70, "tcpa": 0.55, "tdb": 0.40, "twrp": 0.79 }
+   }
+   ]
+   }
+   ]
+   }
 
-Hit remaining branches in tewa/models.py (**str**, validators, custom properties).
+Headers: ETag: "W/\"a1b2c3...\""
 
-Edge cases in kinematics (e.g., zero speed, heading wrap-around, near-zero denominators).
+5.2 /score/ (flat rows, suitable for “Details”)
+{
+"scenario_id": 1,
+"da_id": 1,
+"page": 1,
+"results": [
+{
+"track_id": "T1",
+"computed_at": "2025-09-30T06:07:30Z",
+"metrics": {
+"cpa_m": 1234.5,
+"tcpa_s": 67.8, // may be negative in history; contribution already 0 when negative
+"tdb_s": 90.2,
+"twrp_s": 12.0 // or "inf" if no release opportunity
+},
+"normalized": { "cpa": 0.82, "tcpa": 0.61, "tdb": 0.34, "twrp": 0.74 },
+"weights": { "cpa": 0.25, "tcpa": 0.25, "tdb": 0.25, "twrp": 0.25 },
+"score": 0.656,
+"params": { "clamp_0_1": true }
+}
+]
+}
 
-API unit tests:
+Exact field names can vary slightly by build, but you will receive: a) score, b) components or normalized, c) raw metric values, d) computed_at.
 
-Add specific tests for boundary params, malformed payloads, and proper 4xx/5xx responses.
+6. Angular integration (practical code)
+   6.1 Types
+   export type Normalized = { cpa: number; tcpa: number; tdb: number; twrp: number };
 
-.coveragerc:
+export interface RankingItem {
+track_id: string;
+score: number; // 0..1
+components: Normalized; // 0..1 each
+}
 
-If the goal is repo-wide thresholding, configure omit/include to reflect which modules you want to measure to keep CI green.
+export interface DARanking {
+da: { id: number; name: string; lat: number; lon: number; radius_km: number };
+top: RankingItem[];
+}
 
-TL;DR
+export interface RankingResponse {
+scenario_id: number;
+computed_at: string; // ISO-UTC
+results: DARanking[];
+}
 
-Fixed environment & pytest-django bootstrapping.
+export interface ScoreRow {
+track_id: string;
+computed_at: string; // ISO-UTC
+metrics: { cpa_m: number; tcpa_s: number; tdb_s: number; twrp_s: number | "inf" };
+normalized: Normalized;
+weights: { cpa: number; tcpa: number; tdb: number; twrp: number };
+score: number;
+params?: { clamp_0_1?: boolean };
+}
 
-Rewrote scoring to be robust, testable, and param-driven.
+export interface ScoreResponse {
+scenario_id: number;
+da_id?: number;
+page: number;
+results: ScoreRow[];
+}
 
-Unified threat computation across pure compute, per-track, and batch modes.
+6.2 ETag polling helper
+let etag: string | undefined;
 
-Cleaned up imports/types; removed non-existent ParamsLike issues.
+export async function fetchRanking(scenarioId: number, topN = 10, daId?: number) {
+const q = new URLSearchParams({ scenario_id: String(scenarioId), top_n: String(topN) });
+if (daId) q.set("da_id", String(daId));
 
-All tests pass (34 passed), with a reproducible coverage workflow and an HTML report.
+const res = await fetch(`/api/tewa/ranking/?${q.toString()}`, {
+headers: etag ? { "If-None-Match": etag } : {}
+});
 
-######################################################### 13/10/2025 #########################################################
+if (res.status === 304) return { changed: false } as const;
 
-awesome — here’s a clear, detailed wrap-up of everything we changed, fixed, and finished in this backend build, plus how it ties into your Angular handoff doc.
+etag = res.headers.get("ETag") ?? undefined;
+const data = (await res.json()) as RankingResponse;
+return { changed: true, data } as const;
+}
 
-What we set out to do
+6.3 Angular service (RxJS)
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { interval, switchMap, startWith, map, distinctUntilChanged } from 'rxjs';
 
-Stand up a reliable threat-scoring backend that converts track/asset geometry into an interpretable 0–1 threat score.
+@Injectable({ providedIn: 'root' })
+export class TewaService {
+private etag?: string;
 
-Make it robust (edge cases handled), testable (unit/integration), and ready to integrate with the Angular UI.
+constructor(private http: HttpClient) {}
 
-Document principles so the front-end team understands how/why the API behaves the way it does.
+pollRanking$(scenarioId: number, topN = 10, daId?: number, ms = 5000) {
+const params: any = { scenario_id: scenarioId, top_n: topN };
+if (daId) params.da_id = daId;
 
-Key fixes and changes we made
+    return interval(ms).pipe(
+      startWith(0),
+      switchMap(() => this.http.get<RankingResponse>('/api/tewa/ranking/', {
+        params, observe: 'response', headers: this.etag ? new HttpHeaders({ 'If-None-Match': this.etag }) : undefined
+      })),
+      map(resp => {
+        if (resp.status === 200) this.etag = resp.headers.get('ETag') ?? undefined;
+        return resp.body!;
+      }),
+      distinctUntilChanged((a, b) => a?.computed_at === b?.computed_at) // skip if not changed
+    );
 
-1. Test runner and environment sanity
+}
 
-Resolved ImportError: No module named 'pytest_django' by ensuring pytest-django was installed in the project’s active venv, and running tests via python -m pytest to avoid PATH collisions.
+getScoreRows$(scenarioId: number, daId?: number, page = 1) {
+const params: any = { scenario_id: scenarioId, page };
+if (daId) params.da_id = daId;
+return this.http.get<ScoreResponse>('/api/tewa/score/', { params });
+}
 
-Verified the invoked binaries (which -a pytest, python -c 'print(sys.executable)') so the shell wasn’t mixing global and venv tools.
+computeNow$(scenarioId: number, weaponRangeKm = 20) {
+return this.http.post('/api/tewa/compute_now/', { scenario_id: scenarioId, weapon_range_km: weaponRangeKm });
+}
 
-Adopted a consistent invocation for Django settings: -p pytest_django --ds=missile_model.settings.
+computeAt$(scenarioId: number, whenIsoUtc: string, daIds?: number[], method: 'linear'|'latest' = 'linear', weaponRangeKm = 20) {
+return this.http.post('/api/tewa/compute_at/', {
+scenario_id: scenarioId, when: whenIsoUtc, da_ids: daIds, method, weapon_range_km: weaponRangeKm
+});
+}
 
-Outcome: Stable, reproducible test runs.
+getModelParams$(scenarioId: number) {
+return this.http.get('/api/tewa/modelparams/', { params: { scenario_id: scenarioId } });
+}
 
-2. Unit tests for scoring (and why they matter)
+listDAs$() { return this.http.get('/api/tewa/da/'); }
+}
 
-We introduced/standardized a set of property-based tests around scoring. These validate the behavior of the model rather than hardcoding fragile numerics:
+6.4 Rendering hints (Angular template)
 
-Normalization works (half-scale ~ 0.5 urgency).
+<!-- Per-DA section -->
+<section *ngFor="let group of ranking?.results">
+  <h3>{{ group.da.name }} ({{ ranking?.computed_at | date:'short':'UTC' }})</h3>
+  <div *ngFor="let row of group.top" class="threat-card" [class.critical]="row.score >= 0.8">
+    <div class="header">
+      <span class="track">Track {{ row.track_id }}</span>
+      <span class="score">{{ row.score | number:'1.2-2' }}</span>
+    </div>
+    <div class="bars">
+      <app-bar label="CPA"  [value]="row.components.cpa"></app-bar>
+      <app-bar label="TCPA" [value]="row.components.tcpa"></app-bar>
+      <app-bar label="TDB"  [value]="row.components.tdb"></app-bar>
+      <app-bar label="TWRP" [value]="row.components.twrp"></app-bar>
+    </div>
+  </div>
+</section>
 
-Negative TCPA (closest approach in the past) yields no urgency contribution.
+7. Time & timezone handling
 
-Weights matter (changing weights changes ranking).
+Always send UTC (e.g., new Date().toISOString() which ends with Z).
 
-Clamping toggle (clamped 0–1 for UI vs unclamped for calibration).
+The backend emits UTC (...Z).
 
-No-opportunity (TWRP None) yields lower scores.
+If you show local time, label the timezone in the UI and keep UTC in API calls.
 
-Defaults kick in when parameters are missing.
+8. Error handling (DRF style)
 
-Outcome: 12/12 scoring tests pass, protecting correctness when we refactor.
+400 (validation): show detail or the first key’s error message.
 
-3. The scoring function(s) themselves
+404 (not found): “Scenario/DA/Track not found.”
 
-We ended with two layers:
+409 (duplicate on ingest): show row count and the first few errors[] entries.
 
-Positional-friendly, test-facing scorer:
+422 (semantic): example “time outside scenario window.” Explain and keep the current board visible.
 
-Accepts cpa_km, tcpa_s, tdb_km, twrp_s + a param object (dict or model).
+5xx: show a non-blocking toast; keep last known ranking.
 
-Normalizes each component with simple inverted ratios, applies weights, and optionally clamps final score to [0,1].
+For uploads, render all errors[] with row numbers if present.
 
-Handles edge cases: negative TCPA → 0 contribution; missing/NaN/inf values → 0 contribution; unreachable TWRP → 0 contribution.
+9. Performance & polling
 
-Coercion utility:
+Poll /ranking/ every 5–10s with ETag; skip re-render on 304.
 
-Uniformly accepts either a dict or a Django model and produces a canonical parameter dict with sane defaults (weights, scales, clamp flag).
+Don’t over-poll /score/; fetch on demand (e.g., when a user opens a details drawer).
 
-This keeps the rest of the pipeline consistent and testable, regardless of the caller.
+Use virtualized lists for large DA groups.
 
-Outcome: A clean, explainable threat model with safety rails and one consistent parameter shape.
+Memoize color bands and bar widths to avoid layout thrash.
 
-4. Threat compute pipeline (pure math → persisted rows)
+10. Security, CORS, throttling
 
-We separated pure compute from persistence:
+Dev is open. In prod, JWT is planned (SimpleJWT). Your code should centralize auth headers in an HttpInterceptor so you can turn it on without large diffs.
 
-Pure compute:
+CORS may be restricted in prod; keep all API calls behind a single base URL (e.g., /api/tewa/).
 
-Uses kinematics (CPA/TCPA), distance to DA center (TDB proxy), and time to weapon release (TWRP) to derive normalized components, then combines them.
+11. QA checklist (copy/paste)
 
-Returns a dictionary for score + components; used by unit tests and API logic.
+UTC in/out: all requests with ISO Z.
 
-Persistence path:
+Ranking sorted: score desc, track_id asc.
 
-compute_score_for_track pulls state, derives components, computes the score, then creates a ThreatScore row with a timestamp.
+Explain panel: shows normalized bars and raw metric tooltips.
 
-Batch functions compute and store scores for all tracks in a scenario.
+Negative TCPA: indicates “Past CPA”; contribution 0.
 
-Defaults ensured via ModelParams.get_or_create() so we don’t produce zeroed scores just because params didn’t exist.
+No TWRP: shows “No release opportunity”; contribution 0.
 
-Outcome: The math is reusable and testable; the write-path is thin and predictable.
+ETag polling: 304 respected; UI doesn’t flicker.
 
-5. Type hints and import cleanup
+Errors: DRF messages surfaced; uploads show all errors[].
 
-Introduced type aliases/protocols (ParamLike, and a single coercion function) to avoid fragile deep imports and resolve import errors such as cannot import name 'ParamsLike'.
+Accessibility: bars have text values and ARIA labels.
 
-Kept runtime imports minimal; used string-literal type hints where helpful to avoid circular deps.
+Responsiveness: cards wrap at ~600px; scores readable.
 
-Standardized one \_coerce_params to maintain a single source of truth for defaults.
+12. Glossary
 
-Outcome: Stable imports, cleaner types, fewer “surprise” runtime errors.
+DA (Defended Asset): thing we protect; circle with radius_km around lat/lon.
 
-6. API and service behavior verification
+Track: moving object with time-stamped samples.
 
-Fixed a test where scores persisted as exactly 0.0 — by ensuring non-zero defaults for weights/scales and correct component computation before persisting.
+CPA/TCPA: distance/time to closest approach.
 
-Confirmed the compute_at API route:
+TDB: time/distance to DA boundary cross.
 
-Interpolates track state (linear) at a requested timestamp.
+TWRP: time to weapon-release ring (DA radius + weapon range).
 
-Computes threat components and returns normalized score + parts.
+Normalized component: 0–1 “urgency” for a metric; higher is worse.
 
-Implemented/verified score breakdown service that returns the latest ThreatScore per track/DA with components, for the UI to visualize.
+Clamping: final score limited to 0–1 (default true).
 
-Outcome: API surfaces scores with interpretable parts; latest scoring retrieval works as intended.
+ETag: server’s version tag for a response; enables cheap “not changed” checks.
 
-7. Edge-case semantics (so numbers mean what ops think)
+13. Example flows
 
-Negative TCPA → event is in the past → no urgency from TCPA.
+Manual Recompute Button
 
-TWRP “no opportunity” → +inf in return (and 0-contribution in scoring) so UIs can render “unreachable” explicitly.
+Click “Recompute now” → POST /compute_now/.
 
-Inputs like None/NaN/inf → treated as non-contributory rather than crashing or inflating the score.
+On success, immediately fetch /ranking/ (ignore ETag the first time).
 
-Outcome: No hidden surprises; outputs stay meaningful and safe.
+Resume ETag polling thereafter.
 
-8. Test suite: green across the board
+What-if at Time T
 
-Final state:
+Pick ISO-UTC time → POST /compute_at/ with {method:"linear"}.
 
-34 tests passed (unit + integration).
+Fetch /ranking/ and re-render; allow switching back to “live” (current compute time).
 
-Repeated runs are stable and fast (≈ 1–2 seconds in your environment).
+Explain Row
 
-When needed, we used python -m pytest -q for quiet, repeatable CI-friendly output.
+User clicks track in board → fetch /score/?scenario_id=1&da_id=X.
 
-Outcome: A green, trustworthy baseline.
+Filter the returned rows for track_id, pick latest computed_at.
 
-9. Coverage runs and strategy
-
-We ran coverage run -m pytest then coverage report/html.
-
-Initially coverage was low because it included views/admin/demo commands not exercised by tests.
-
-After resetting data (coverage erase) and focusing on the core modules, we achieved >90% in the critical math paths (kinematics, scoring, models used by scoring).
-
-We left non-critical admin/view layers with lower coverage intentionally (they don’t impact the scoring engine and would require a lot of UI/permission scaffolding to test meaningfully).
-
-Outcome: High confidence where it matters (math + scoring), with realistic investment.
-
-Principles we locked in (for your Angular team’s doc)
-
-Interpretability: Each component (CPA, TCPA, TDB, TWRP) has clear semantics; the weights reflect doctrine; the scales set what “urgent” means.
-
-Monotonic normalization: “Smaller is worse” becomes “closer to 1” — intuitive and tunable.
-
-Clamping toggle: Human-friendly 0–1 for dashboards; unclamped for calibration/testing properties.
-
-Graceful fallbacks: Missing or impossible values reduce urgency rather than breaking or misleading.
-
-Determinism: The same inputs produce the same outputs; interpolated states make “score at time t” well-defined.
-
-What the Angular/HTML-CSS team needs to know (no code, just behavior)
-
-Endpoints return:
-
-A total threat score (0–1 if clamped).
-
-The component values (raw and/or normalized) so they can draw breakdowns, bar charts, badges, and interpret reasons for rank.
-
-Status and errors:
-
-When TWRP is unreachable, it will appear as infinite in response fields and contribute 0 to the score. Front-end should render that as “No release opportunity” or similar.
-
-TCPA returned is non-negative in payloads (post-processing), even if the internal compute detected a negative (past event).
-
-Sorting and thresholds:
-
-Sort by score descending for rank.
-
-You can set threshold bands (e.g., ≥0.8 = “critical”) aligned with the scales/weights the ops team sets.
-
-Tuning knobs (owned by ops/analysts):
-
-Weights (importance of CPA vs TCPA vs TDB vs TWRP).
-
-Scales (where urgency transitions happen).
-
-Clamp flag (for UIs vs calibration).
-
-Time queries:
-
-Calls that include a timestamp will get states interpolated linearly. That’s deliberate and stable.
-
-What’s completed vs what’s next
-Completed
-
-Fully working scoring engine with robust normalization and edge-case handling.
-
-Pure compute functions separated from database persistence.
-
-Fixed test coverage for all critical scoring paths; 34 tests passing consistently.
-
-Stabilized typing and imports; eliminated runtime import/type errors.
-
-API and service behavior verified for latest score breakdown and point-in-time compute.
-
-Good next steps (when you’re ready)
-
-Calibration with SMEs / historical data: adjust scales to align score bands with real thresholds.
-
-Nonlinear mapping (e.g., logistic near the DA) if ops want a sharper ramp close to the asset.
-
-Uncertainty discounts: lower scores for low-confidence tracks or noisy sensors.
-
-Scenario doctrine profiles: saved presets of weights/scales for mission types.
-
-TL;DR
-
-You now have a clean, principled backend that:
-
-Converts motion and geometry into a transparent threat score,
-
-Handles corner cases the way operators expect,
-
-Is well-tested and easy to integrate,
-
-And gives the Angular team everything they need for clear, explainable UI behavior.
-
-If you want, I can turn this into a short internal README and a one-page integration brief (terminology,
+Display the row’s metrics, normalized, weights, score.

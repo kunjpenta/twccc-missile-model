@@ -1,28 +1,43 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+# core/dtos.py
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TypedDict
+
+try:
+    # Python 3.11+
+    from typing import NotRequired, Required  # type: ignore[attr-defined]
+except Exception:  # Python <= 3.10
+    from typing_extensions import NotRequired, Required  # type: ignore
 
 
-@dataclass(slots=True)
-class TrackState:
-    lat: float
-    lon: float
-    alt_m: float
-    speed_mps: float
-    heading_deg: float
-    t_iso: Optional[str] = None
+class TrackState(TypedDict, total=False):
+    """
+    Lightweight kinematic state used by sampling & threat_compute.
+    Required keys cover interpolation and kinematics; the rest are optional.
+    """
+    # required
+    lat: Required[float]
+    lon: Required[float]
+    alt_m: Required[float]
+    speed_mps: Required[float]
+    heading_deg: Required[float]
+    t: Required[datetime]   # tz-aware UTC
+
+    # optional metadata
+    track_id: NotRequired[int]
+    track_external_id: NotRequired[str]
+    scenario_id: NotRequired[int]
+
+    # optional precomputed components
+    vx_mps: NotRequired[float]
+    vy_mps: NotRequired[float]
 
 
-@dataclass
-class ScoreBreakdownDTO:
-    scenario_id: int
-    da_id: int
-    # Accept either the DB pk (int) or the public track id (str) in the DTO
-    track_id: Union[int, str]
-    ts: Optional[str]
-    cpa_km: Optional[float]
-    tcpa_s: Optional[float]
-    tdb_km: Optional[float]
-    twrp_s: Optional[float]
-    total_score: Optional[float]
-    # Optional payload with per-component details if you add it later
-    details: Optional[Dict[str, Any]] = None
+# if you maintain an __all__, include TrackState:
+try:
+    __all__  # type: ignore[name-defined]
+except NameError:
+    __all__ = []
+if "TrackState" not in __all__:
+    __all__.append("TrackState")

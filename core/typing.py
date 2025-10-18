@@ -1,32 +1,10 @@
 # core/typing.py
+from __future__ import annotations
 
-from django.db import models
-from django.contrib.auth.models import AbstractUser
-from typing import NewType, TypedDict
-
-ScenarioId = NewType("ScenarioId", int)
-TrackPK = NewType("TrackPK", int)
-DefendedAssetPK = NewType("DefendedAssetPK", int)
+from datetime import datetime
+from typing import TypedDict
 
 
-class ScoreRow(TypedDict, total=False):
-    track_id: str
-    da_name: str
-    score: float
-    computed_at: str
-
-
-# core/models.py
-
-
-class User(AbstractUser):
-    ROLE_CHOICES = [
-        ('admin', 'Admin'),
-        ('operator', 'Operator'),
-        ('viewer', 'Viewer'),
-    ]
-    role = models.CharField(
-        max_length=20, choices=ROLE_CHOICES, default='viewer')
-
-    def __str__(self):
-        return f"{self.username} ({self.role})"
+class DateTimeDict(TypedDict):
+    dt: datetime   # tz-aware UTC
+    iso: str       # ISO-8601 string, e.g. "...Z"

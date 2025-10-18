@@ -1,0 +1,38 @@
+{% extends "docs/_doc_base.html" %}
+{% block crumbs %}<a href="{% url 'core:docs-index' %}">Index</a> / <strong>Backend</strong>{% endblock %}
+{% block doc %}
+<h1>TEWA Backend Guide (Scoring, APIs, Tests)</h1>
+<p><em>Date: {{ now|default:"" }}</em></p>
+
+<p><a href="{% static 'docs/tewa-backend.md' %}" download>Download Markdown</a></p>
+
+<details open>
+  <summary><strong>What we built & stabilized</strong></summary>
+  <div style="margin-top:.5rem">
+    <ul>
+      <li>Normalization & weighted fusion (CPA/TCPA/TDB/TWRP)</li>
+      <li>Edge semantics: negative TCPA → 0 contrib; unreachable TWRP → 0</li>
+      <li>Pure compute vs persistence; API & mgmt command integration</li>
+      <li>Deterministic tests (34 green) & coverage workflow</li>
+    </ul>
+  </div>
+</details>
+
+<details>
+  <summary><strong>How to call</strong></summary>
+  <div style="margin-top:.5rem">
+    <p>Use <code>/api/tewa/compute_now/</code> or <code>/api/tewa/compute_at/</code>. Interpolation method: <code>linear</code> or <code>latest</code>. Responses include score + components.</p>
+  </div>
+</details>
+
+<details>
+  <summary><strong>Tuning knobs</strong></summary>
+  <div style="margin-top:.5rem">
+    <p><code>ModelParams</code>: weights, scales, clamp flag.</p>
+  </div>
+</details>
+
+<pre style="white-space:pre-wrap;border:1px solid #eee;border-radius:8px;padding:12px;margin-top:1rem;">
+<!-- PASTE the detailed backend write-up here if you want it inline -->
+</pre>
+{% endblock %}

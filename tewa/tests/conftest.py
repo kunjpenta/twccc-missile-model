@@ -1,14 +1,17 @@
 # tewa/tests/conftest.py
-from tewa.tests.factories import create_da, create_scenario, create_tracks
-from rest_framework.test import APIClient
-from django.contrib.auth import get_user_model
 from datetime import timedelta
 from typing import Any, Dict
 
 import django.urls
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse as _reverse
 from django.utils import timezone
+from rest_framework.test import APIClient
+
+from tewa.models import DefendedAsset, Scenario, ThreatScore, Track
+from tewa.services.threat_compute import batch_compute_for_scenario
+from tewa.tests.factories import create_da, create_scenario, create_tracks
 
 
 # ---------------------------------------------------------------------
@@ -147,3 +150,62 @@ def seeded_scenario(db):
     create_da(sc)
     create_tracks(sc, 3)
     return sc
+
+
+# Make the parity fixture available to all tests by delegating to the shared one
+
+
+# tewa/tests/conftest.py
+
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def seeded_threatscores(db):
+    """
+    Seed a deterministic scenario with one DA and one Track, then compute scores.
+    Returns the Scenario instance.
+    """
+    # Fresh scenario
+    s = Scenario.objects.create(name="Scenario-ParityTest")
+
+    # Center DA
+    da = DefendedAsset.objects.create(
+        scenario=s,
+        name="DA-Test",
+        lat=0.0,
+        lon=0.0,
+        radius_km=10.0,
+    )
+
+    # Slightly offset Track
+    Track.objects.create(
+        scenario=s,
+        track_id="T-Alpha",
+        lat=0.1,
+        lon=0.1,
+        alt_m=1000.0,      # keep NOT NULL happy
+        speed_mps=250.0,
+        heading_deg=225.0,
+    )
+
+    # Compute threat scores (persists to DB)
+    batch_compute_for_scenario(s.id, da_id=da.id)
+
+    # Guard: ensure at least one score exists
+    assert ThreatScore.objects.filter(da__scenario=s).exists()
+
+    return s
+
+
+@pytest.fixture
+def staff_user(django_user_model):
+    user = django_user_model.objects.create_user(
+        username="staffer",
+        email="staff@example.com",
+        password="testpass",
+        is_staff=True,
+        is_superuser=False,
+    )
+    return user

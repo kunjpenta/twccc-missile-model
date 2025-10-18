@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Docs · {{ block.super }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem;">
+  <nav style="margin-bottom: 1rem; font-size: 0.95rem;">
+    <a href="{% url 'core:docs-index' %}">Docs</a> /
+    {% block crumbs %}{% endblock %}
+  </nav>
+
+  <article style="background:#fff;border:1px solid #eee;border-radius:12px;padding:1.25rem 1.25rem 1.5rem;">
+    {% block doc %}
+    {% endblock %}
+  </article>
+
+  <div style="margin-top:1rem;font-size:0.85rem;color:#666;">
+    © 2025 Missile Model. All rights reserved.
+  </div>
+</div>
+{% endblock %}

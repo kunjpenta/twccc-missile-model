@@ -6,11 +6,16 @@ from rest_framework.routers import DefaultRouter
 
 from tewa.api import views_assets_tracks
 
-from . import views
+from . import views, views_misc
 from .views import (
     ScenarioParamsView,
     score_breakdown,  # <- function view
     score_history_png_view,  # <- function view
+)
+from .views_assets_tracks import (
+    get_mavlink_vs_flight,
+    get_trk_iden_data,
+    insert_track_data,
 )
 
 activate("en")
@@ -37,7 +42,7 @@ def ping(_): return JsonResponse({"ok": True})
 
 
 urlpatterns = [
-    path("ping", ping, name="ping"),  # /api/tewa/ping -> {"ok": true}
+    path("ping", views_misc.ping, name="ping"),
 
     path("", views.root, name="root"),
     path("scenarios/", views.scenarios, name="scenarios"),
@@ -75,6 +80,13 @@ urlpatterns = [
         views.api_threatscores,
         name="api_threatscores",
     ),
+    # Back-compat aliases for old app’s paths:
+    path("track/ident-map", get_trk_iden_data, name="tracks-ident-map-compat"),
+    path("track/mavlink-vs-flight", get_mavlink_vs_flight,
+         name="tracks-mavlink-vs-flight-compat"),
+    path("track/insert-bulk", insert_track_data,
+         name="tracks-insert-bulk-compat"),
+
 
 ]
 

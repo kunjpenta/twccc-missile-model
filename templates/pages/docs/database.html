@@ -1,0 +1,41 @@
+{% extends "docs/_doc_base.html" %}
+{% block crumbs %}<a href="{% url 'core:docs-index' %}">Index</a> / <strong>Database</strong>{% endblock %}
+{% block doc %}
+<h1>TEWA Backend Database Management Guide</h1>
+<p><em>Date: {{ now|default:"" }}</em></p>
+
+<p><a href="{% static 'docs/tewa-database.md' %}" download>Download Markdown</a></p>
+
+<details open>
+  <summary><strong>Overview</strong></summary>
+  <div style="margin-top:.5rem">
+    <p>Django + PostgreSQL; data for DAs, Tracks, TrackSamples, ThreatScores, Scenarios, ModelParams. Celery tasks for periodic compute; manual triggers via API/UI.</p>
+  </div>
+</details>
+
+<details>
+  <summary><strong>Tables & constraints</strong></summary>
+  <div style="margin-top:.5rem">
+    <ul>
+      <li>Unique: Track (scenario + track_id), TrackSample (track + t), ThreatScore (scenario + track + da + computed_at)</li>
+      <li>Weights in [0,1]; scale &gt; 0; timestamps UTC</li>
+      <li>Indexes on ThreatScore and TrackSample for performance</li>
+    </ul>
+  </div>
+</details>
+
+<details>
+  <summary><strong>Ops notes</strong></summary>
+  <div style="margin-top:.5rem">
+    <ul>
+      <li>Ensure ModelParams exists per scenario</li>
+      <li>Consider archiving ThreatScore history; enable PostGIS for advanced geospatial needs</li>
+      <li>Backups after seeding; daily incrementals for live ops</li>
+    </ul>
+  </div>
+</details>
+
+<pre style="white-space:pre-wrap;border:1px solid #eee;border-radius:8px;padding:12px;margin-top:1rem;">
+<!-- PASTE the full “TEWA Backend Database Management Guide” here if you want it inline -->
+</pre>
+{% endblock %}

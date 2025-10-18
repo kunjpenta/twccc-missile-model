@@ -1,0 +1,115 @@
+{# templates/scenario_detail.html #}
+{% extends "base.html" %}
+
+{% block title %}Scenario · {{ scenario.name }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'tewa:home' %}">Home</a></li>
+    <li class="breadcrumb-item">Scenarios</li>
+    <li class="breadcrumb-item active" aria-current="page">{{ scenario.name }}</li>
+  </ol>
+</nav>
+
+<h2 class="mb-1">{{ scenario.name }}</h2>
+<p class="text-muted mb-3">Scenario-{{ scenario.id }}</p>
+
+<div class="mb-3">
+  <p><strong>Start Time:</strong> {{ scenario.start_time }}</p>
+  <p><strong>End Time:</strong> {{ scenario.end_time }}</p>
+  <p><strong>Notes:</strong> {{ scenario.notes }}</p>
+</div>
+
+<hr />
+
+<h3>Defended Assets</h3>
+{% if defended_assets %}
+  <ul>
+    {% for da in defended_assets %}
+      <li>
+        {{ da.name }} — (Lat: {{ da.lat }}, Lon: {{ da.lon }}, Radius: {{ da.radius_km }} km)
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No Defended Assets found.</p>
+{% endif %}
+
+<hr />
+
+{# Threat Scores #}
+{% with threats=scenario.threatscore_set.all %}
+  <h3>Threat Scores</h3>
+  {% if threats %}
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Track ID</th>
+          <th>Defended Asset</th>
+          <th>Threat Score</th>
+          <th>Computed At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for threat in threats %}
+          <tr>
+            <td>{{ threat.track.track_id }}</td>
+            <td>{{ threat.da.name }}</td>
+            <td>{{ threat.score }}</td>
+            <td>{{ threat.computed_at }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No Threat Scores computed yet.</p>
+  {% endif %}
+{% endwith %}
+
+<hr />
+
+{# Tracks list with light pagination controls #}
+<h3>
+  Tracks
+  {# If tracks is a Paginator Page, paginator.count resolves; if not, this gracefully empties #}
+  <small class="text-muted">
+    ({{ tracks.paginator.count }})
+  </small>
+</h3>
+
+{% if tracks %}
+  <ul>
+    {% for track in tracks %}
+      <li>
+        {{ track.track_id }} — (Lat: {{ track.lat }}, Lon: {{ track.lon }}, Alt: {{ track.alt_m }} m)
+      </li>
+    {% endfor %}
+  </ul>
+
+  <nav aria-label="Track pagination">
+    <ul class="pagination">
+      {% if tracks.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ tracks.previous_page_number }}">Previous</a>
+        </li>
+      {% endif %}
+      <li class="page-item active"><a class="page-link">{{ tracks.number }}</a></li>
+      {% if tracks.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ tracks.next_page_number }}">Next</a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% else %}
+  <p>No Tracks found.</p>
+{% endif %}
+
+<hr />
+
+<form method="post" action="">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-primary">Compute Now</button>
+</form>
+{% endblock %}

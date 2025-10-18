@@ -1,0 +1,197 @@
+{# templates/scenarios/detail.html #}
+{% extends "base.html" %}
+
+{% block title %}Scenario · {{ scenario.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .bar {
+    height: 8px;
+    border-radius: 6px;
+    background: #2b3240;
+    position: relative;
+    overflow: hidden;
+  }
+  .bar > i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #2d5cff, #6ea8fe);
+    transform-origin: left;
+    transform: scaleX(0);
+  }
+  .table td,
+  .table th {
+    vertical-align: middle;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumbs -->
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'tewa:home' %}">Home</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'tewa:home' %}#scenarios">Scenarios</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ scenario.name }}</li>
+  </ol>
+</nav>
+
+{% if user.is_staff or perms.tewa.compute_now %}
+<form method="post" action="{% url 'tewa:compute_now_scenario' scenario.id %}" class="mb-3">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-warning">⚙ Compute Now</button>
+</form>
+{% endif %}
+
+<section class="card mt-2 p-0">
+  <div class="card-header">Score Breakdown (ad-hoc)</div>
+  <div class="card-body">
+    <form id="sb-form" class="row row-cols-lg-auto g-2 align-items-center mb-3">
+      <div class="col">
+        <input
+          class="form-control"
+          name="scenario_id"
+          placeholder="Scenario ID"
+          required
+          value="{{ scenario.id }}"
+        />
+      </div>
+      <div class="col">
+        <input class="form-control" name="da_id" placeholder="DA ID" required />
+      </div>
+      <div class="col">
+        <input
+          class="form-control"
+          name="track_id"
+          placeholder="Track ID (e.g., 3 or T3)"
+          required
+        />
+      </div>
+      <div class="col">
+        <button class="btn btn-primary" type="submit">Fetch</button>
+      </div>
+    </form>
+    <pre id="sb-output" class="bg-light p-3 mb-0" style="max-height: 380px; overflow: auto"></pre>
+  </div>
+</section>
+
+<div class="row mt-4">
+  <div class="card p-3" style="flex: 1 1 280px">
+    <h2 class="m-0">{{ scenario.name }}</h2>
+    <div class="muted">
+      {{ scenario.start_time|default:"—" }} → {{ scenario.end_time|default:"—" }}
+    </div>
+    <div class="chips mt-2">
+      <a class="btn" href="{% url 'tewa:scenario_assumptions' scenario.id %}">Assumptions</a>
+      <a class="btn" href="/api/tewa/export/threat_board.csv?scenario_id={{ scenario.id }}">Export CSV</a>
+    </div>
+  </div>
+</div>
+
+{% for da in das %}
+<div class="card mt-3 p-3">
+  <div class="d-flex justify-content-between align-items-center">
+    <h3 class="m-0">Defended Asset: {{ da.name }}</h3>
+    <a
+      class="btn"
+      href="/api/tewa/export/threat_board.csv?scenario_id={{ scenario.id }}&da_id={{ da.id }}"
+    >
+      Export CSV (DA)
+    </a>
+  </div>
+
+  <table class="table mt-3">
+    <thead>
+      <tr>
+        <th>Track</th>
+        <th>CPA (m)</th>
+        <th>TCPA (s)</th>
+        <th>TDB (s)</th>
+        <th>TWRP (s)</th>
+        <th>Score</th>
+        <th>Chart</th>
+        <th style="width: 360px">Breakdown</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in da.threat_rows %}{% with score=row.score %}
+      <tr>
+        <td><strong>{{ row.track_id }}</strong></td>
+        <td class="muted">{{ row.metrics.cpa_m|floatformat:1 }}</td>
+        <td class="muted">{{ row.metrics.tcpa_s|floatformat:1 }}</td>
+        <td class="muted">{{ row.metrics.tdb_s|floatformat:1 }}</td>
+        <td class="muted">{{ row.metrics.twrp_s|floatformat:1 }}</td>
+        <td class="score {% if score >= 0.8 %}sev-high{% elif score >= 0.5 %}sev-med{% else %}sev-low{% endif %}">
+          {{ score|floatformat:3 }}
+        </td>
+        <td>
+          <img
+            alt="Score history"
+            width="240"
+            height="90"
+            src="/api/tewa/charts/score_history.png?scenario_id={{ scenario.id }}&da_id={{ da.id }}&track_id={{ row.track_id }}&width=240&height=90&smooth=3"
+          />
+        </td>
+        <td>
+          <details>
+            <summary>View breakdown</summary>
+            <div class="grid-3 mt-2">
+              <div>
+                <div class="muted">CPA</div>
+                <div class="bar"><i style="transform:scaleX({{ row.normalized.cpa|default:0 }})"></i></div>
+                <small>raw: {{ row.metrics.cpa_m|floatformat:1 }}, w: {{ row.weights.cpa|floatformat:2 }}, c: {{ row.contributions.cpa|floatformat:3 }}</small>
+              </div>
+              <div>
+                <div class="muted">TCPA</div>
+                <div class="bar"><i style="transform:scaleX({{ row.normalized.tcpa|default:0 }})"></i></div>
+                <small>raw: {{ row.metrics.tcpa_s|floatformat:1 }}, w: {{ row.weights.tcpa|floatformat:2 }}, c: {{ row.contributions.tcpa|floatformat:3 }}</small>
+              </div>
+              <div>
+                <div class="muted">TDB</div>
+                <div class="bar"><i style="transform:scaleX({{ row.normalized.tdb|default:0 }})"></i></div>
+                <small>raw: {{ row.metrics.tdb_s|floatformat:1 }}, w: {{ row.weights.tdb|floatformat:2 }}, c: {{ row.contributions.tdb|floatformat:3 }}</small>
+              </div>
+              <div>
+                <div class="muted">TWRP</div>
+                <div class="bar"><i style="transform:scaleX({{ row.normalized.twrp|default:0 }})"></i></div>
+                <small>raw: {{ row.metrics.twrp_s|floatformat:1 }}, w: {{ row.weights.twrp|floatformat:2 }}, c: {{ row.contributions.twrp|floatformat:3 }}</small>
+              </div>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {% endwith %}{% empty %}
+      <tr>
+        <td colspan="8" class="muted">No threats computed yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.getElementById("sb-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const params = new URLSearchParams({
+      scenario_id: fd.get("scenario_id"),
+      da_id: fd.get("da_id"),
+      track_id: fd.get("track_id"),
+    });
+    const out = document.getElementById("sb-output");
+    out.textContent = "Loading…";
+    try {
+      const res = await fetch(`/api/tewa/score_breakdown?${params.toString()}`);
+      const body = await res.json();
+      out.textContent = JSON.stringify(body, null, 2);
+    } catch (err) {
+      out.textContent = "Error: " + (err?.message || err);
+    }
+  });
+</script>
+{% endblock %}

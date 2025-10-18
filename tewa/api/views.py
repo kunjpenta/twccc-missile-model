@@ -1,8 +1,7 @@
 # tewa/api/views.py — keeps old import path stable
 # keep near the top with other imports
 from __future__ import annotations
-from tewa.models import ThreatScore
-from django.http import JsonResponse
+from rest_framework.permissions import AllowAny
 
 import csv
 import datetime as dt
@@ -30,6 +29,7 @@ from tewa.services.score_breakdown_service import (
 from tewa.services.score_history import get_score_series
 
 from .serializers import ScenarioParamsSerializer, ScoreBreakdownSerializer
+from .view_utils import ok
 from .views_compute import (
     calculate_scores,
     compute_at,
@@ -332,3 +332,9 @@ def api_threatscores(request, scenario_id):
         data.append(d)
 
     return JsonResponse(data, safe=False)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def ping(request):
+    return ok("tewa_api:ping", version="v1")

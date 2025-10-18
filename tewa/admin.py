@@ -1,9 +1,12 @@
 # tewa/admin.py
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+from typing import List, Optional, Tuple, cast
+
 from django import forms
 from django.contrib import admin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 
 from .models import (
     DefendedAsset,
@@ -14,58 +17,96 @@ from .models import (
     TrackSample,
 )
 
-# Try to use the nicer DefendedAssetForm if present (won't hard-crash admin if it's not)
+# ---------------------------------------------------------------------
+# Optional imports (admin should not crash if custom forms are missing)
+# ---------------------------------------------------------------------
 try:
-    from .forms import DefendedAssetForm  # optional
-except Exception:
-    DefendedAssetForm = None  # type: ignore
+    from .forms import DefendedAssetForm  # optional nicer form for DA
+except Exception:  # pragma: no cover - defensive fallback
+    DefendedAssetForm = None  # type: ignore[assignment]
 
 
-# ---------- Scenario ----------
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def model_has_field(model, name: str) -> bool:
+    """True if the ORM model defines a concrete field with this name."""
+    try:
+        model._meta.get_field(name)
+        return True
+    except FieldDoesNotExist:
+        return False
+
+
+# ---------------------------------------------------------------------
+# Scenario
+# ---------------------------------------------------------------------
 @admin.register(Scenario)
 class ScenarioAdmin(admin.ModelAdmin):
     list_display = ("name", "created_at", "updated_at")
     search_fields = ("name",)
 
 
-# ---------- Track ----------
+# ---------------------------------------------------------------------
+# Track
+# ---------------------------------------------------------------------
 @admin.register(Track)
 class TrackAdmin(admin.ModelAdmin):
-    list_display = (
-        "track_id", "scenario", "lat", "lon",
-        "alt_m", "speed_mps", "heading_deg", "updated_at",
-    )
+    list_display = ("track_id", "scenario", "lat", "lon",
+                    "alt_m", "speed_mps", "heading_deg", "updated_at")
     search_fields = ("track_id", "scenario__name")
     list_filter = ("scenario",)
+    list_select_related = ("scenario",)
+    autocomplete_fields = ("scenario",)  # if Track.scenario is FK
 
 
-# ---------- TrackSample ----------
+# ---------------------------------------------------------------------
+# TrackSample
+# ---------------------------------------------------------------------
 @admin.register(TrackSample)
 class TrackSampleAdmin(admin.ModelAdmin):
     list_display = ("track", "t", "lat", "lon",
                     "alt_m", "speed_mps", "heading_deg")
-    list_filter = ("track__scenario", "track")
+    # keep both; “scenario via track” is useful
+    list_filter = ("track", "track__scenario")
     date_hierarchy = "t"
+    list_select_related = ("track", "track__scenario")
+    autocomplete_fields = ("track",)
+    ordering = ("-t",)
 
 
-# ---------- ThreatScore ----------
+# ---------------------------------------------------------------------
+# ThreatScore
+# ---------------------------------------------------------------------
 @admin.register(ThreatScore)
 class ThreatScoreAdmin(admin.ModelAdmin):
     list_display = ("scenario", "track", "da", "score", "computed_at")
     list_filter = ("scenario", "da", "computed_at")
     search_fields = ("track__track_id", "da__name", "scenario__name")
+    list_select_related = ("scenario", "track", "da")
+    ordering = ("-computed_at",)
 
 
-# ---------- DefendedAsset ----------
+# ---------------------------------------------------------------------
+# DefendedAsset
+# ---------------------------------------------------------------------
 @admin.register(DefendedAsset)
 class DefendedAssetAdmin(admin.ModelAdmin):
-    form = DefendedAssetForm if DefendedAssetForm else None
+    # Do not assign None to .form in the class body (type checkers expect type[BaseForm])
     list_display = ("id", "name", "lat", "lon",
                     "radius_km", "created_at", "updated_at")
     search_fields = ("name",)
 
 
-# ---------- ModelParams ----------
+# Assign the optional form only if present (keeps type-checkers happy)
+if DefendedAssetForm is not None:
+    # type: ignore[attr-defined]
+    DefendedAssetAdmin.form = cast(type[forms.BaseForm], DefendedAssetForm)
+
+
+# ---------------------------------------------------------------------
+# ModelParams + Admin Form
+# ---------------------------------------------------------------------
 class ModelParamsForm(forms.ModelForm):
     class Meta:
         model = ModelParams
@@ -96,12 +137,21 @@ class ModelParamsForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
 
-        # Sum-to-1 for weights (if present)
+        # Sum-to-1 (Decimal-safe; human-friendly tolerance)
+        TOL = Decimal("0.001")
         w_keys = ["w_cpa", "w_tcpa", "w_tdb", "w_twrp"]
-        if all(k in self.cleaned_data for k in w_keys):
-            wsum = sum(float(self.cleaned_data.get(k) or 0.0) for k in w_keys)
-            if abs(wsum - 1.0) > 1e-6:
-                raise ValidationError("Weights must sum to 1.0")
+        try:
+            weights = [
+                self.cleaned_data.get(k) if self.cleaned_data.get(
+                    k) is not None else Decimal("0")
+                for k in w_keys
+            ]
+            weights = [Decimal(str(w)) for w in weights]
+            s = sum(weights)
+            if abs(s - Decimal("1.0")) > TOL:
+                raise ValidationError("Weights must sum to 1.0 (±0.001).")
+        except (InvalidOperation, TypeError):
+            raise ValidationError("Weights must be numeric and sum to 1.0.")
 
         # Task-23 fields (if present on model): tick_s > 0, R_DA_m < R_W_m
         tick = self.cleaned_data.get("tick_s", None)
@@ -132,62 +182,71 @@ class ModelParamsAdmin(admin.ModelAdmin):
         legacy_fields = ["cpa_scale_km", "tcpa_scale_s",
                          "tdb_scale_km", "twrp_scale_s", "clamp_0_1"]
 
-        def have(attr: str) -> bool:
-            return hasattr(ModelParams, attr)
+        dyn: List[str] = base[:]
+        dyn += [f for f in new_fields if model_has_field(ModelParams, f)]
+        dyn += [f for f in legacy_fields if model_has_field(ModelParams, f)]
 
-        dyn = base[:]
-        dyn += [f for f in new_fields if have(f)]
-        dyn += [f for f in legacy_fields if have(f)]
         # Common metadata if present
         for meta in ("updated_by", "updated_at", "created_at"):
-            if have(meta):
+            if model_has_field(ModelParams, meta):
                 dyn.append(meta)
         return tuple(dyn)
 
     # Fieldsets adaptively include fields that exist on the model
     def get_fieldsets(self, request, obj=None):
-        def have(attr: str) -> bool:
-            return hasattr(ModelParams, attr)
+        # list[tuple[Optional[str], dict[str, tuple[str, ...]]]]
+        fs: List[Tuple[Optional[str], dict[str, Tuple[str, ...]]]] = []
 
         # Group 1: Scenario
-        fs = [(None, {"fields": ("scenario",)})]
+        fs.append((None, {"fields": ("scenario",)}))
 
         # Group 2: Weights
         fs.append(("Weights (sum = 1)", {"fields": (
             "w_cpa", "w_tcpa", "w_tdb", "w_twrp")}))
 
         # Group 3: Ranges / Tick (Task-23)
-        rng = [f for f in ("R_W_m", "R_DA_m", "tick_s") if have(f)]
+        rng = tuple([f for f in ("R_W_m", "R_DA_m", "tick_s")
+                    if model_has_field(ModelParams, f)])
         if rng:
-            fs.append(("Ranges & Timing", {"fields": tuple(rng)}))
+            fs.append(("Ranges & Timing", {"fields": rng}))
 
         # Group 4: Sigmas (Task-23)
-        sig = [f for f in ("sigma_cpa", "sigma_tcpa",
-                           "sigma_tdb", "sigma_twrp") if have(f)]
+        sig = tuple([f for f in ("sigma_cpa", "sigma_tcpa", "sigma_tdb",
+                    "sigma_twrp") if model_has_field(ModelParams, f)])
         if sig:
-            fs.append(("Sigmas (optional)", {"fields": tuple(sig)}))
+            fs.append(("Sigmas (optional)", {"fields": sig}))
 
         # Group 5: Legacy scaling (if still present)
-        legacy = [f for f in ("cpa_scale_km", "tcpa_scale_s",
-                              "tdb_scale_km", "twrp_scale_s", "clamp_0_1") if have(f)]
+        legacy = tuple(
+            [f for f in ("cpa_scale_km", "tcpa_scale_s", "tdb_scale_km", "twrp_scale_s", "clamp_0_1")
+             if model_has_field(ModelParams, f)]
+        )
         if legacy:
-            fs.append(("Legacy Scaling", {"fields": tuple(legacy)}))
+            fs.append(("Legacy Scaling", {"fields": legacy}))
 
         # Group 6: Meta
-        meta = [f for f in ("updated_by", "updated_at",
-                            "created_at") if have(f)]
+        meta = tuple([f for f in ("updated_by", "updated_at",
+                     "created_at") if model_has_field(ModelParams, f)])
         if meta:
-            fs.append(("Meta", {"fields": tuple(meta)}))
+            fs.append(("Meta", {"fields": meta}))
 
         return fs
 
-    # Make scenario read-only after creation
+    # Make scenario read-only after creation; keep meta read-only if present
     def get_readonly_fields(self, request, obj=None):
         ro = list(super().get_readonly_fields(request, obj))
         if obj:
             ro.append("scenario")
-        # meta fields (if present) are typically read-only from admin
         for meta in ("updated_at", "created_at"):
-            if hasattr(ModelParams, meta) and meta not in ro:
+            if model_has_field(ModelParams, meta) and meta not in ro:
                 ro.append(meta)
         return tuple(ro)
+
+    # Optional: stamp updated_by if model supports it
+    def save_model(self, request, obj, form, change):
+        if model_has_field(ModelParams, "updated_by") and getattr(request, "user", None) and request.user.is_authenticated:
+            try:
+                setattr(obj, "updated_by", request.user)
+            except Exception:
+                pass
+        super().save_model(request, obj, form, change)

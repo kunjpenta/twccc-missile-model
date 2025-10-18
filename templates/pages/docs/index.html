@@ -1,0 +1,12 @@
+{% extends "docs/_doc_base.html" %}
+{% block crumbs %}<strong>Index</strong>{% endblock %}
+{% block doc %}
+<h1 style="margin:0 0 .5rem">Documentation</h1>
+<p style="color:#555">TEWA Console · Engineering handoff & runbook</p>
+<ul style="line-height:1.7;margin-top:1rem">
+  <li><a href="{% url 'core:docs-frontend' %}">TEWA Frontend Integration Guide</a></li>
+  <li><a href="{% url 'core:docs-backend' %}">TEWA Backend Guide (scoring, APIs, tests)</a></li>
+  <li><a href="{% url 'core:docs-database' %}">TEWA Backend Database Management Guide</a></li>
+</ul>
+<p style="margin-top:1rem">Tip: You can bookmark these URLs and share internally.</p>
+{% endblock %}

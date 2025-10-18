@@ -20,3 +20,9 @@ def iso_utc_now():
 
 def bad_request(msg: str) -> Response:
     return Response({"detail": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def ok(endpoint: str, **extra):
+    payload = {"ok": True, "endpoint": endpoint}
+    payload.update(extra)
+    return Response(payload)
